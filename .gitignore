@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+build/
+dist/
+*.egg-info/
+
+# Generated pilot packages contain private source mappings and image copies.
+collaboration_runs/
+
+# Dataset-derived local evidence can contain participant IDs and source paths.
+feasibility_audit/
+feasibility_report/
+OpenSLIT_SLIT_Dataset_Feasibility_Audit.ipynb

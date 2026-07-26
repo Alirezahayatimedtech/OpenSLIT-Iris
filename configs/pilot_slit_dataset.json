@@ -1,0 +1,14 @@
+{
+  "image_profile": "../feasibility_audit/image_profile.csv",
+  "source_manifest": "../../slit-project/paper2_runs/angle_closure_corrected_p2_views_80_20/corrected_release_view_image_manifest_80_20.csv",
+  "output_dir": "../collaboration_runs/slit_pilot_v1",
+  "seed": 20260726,
+  "distribution_participants": 40,
+  "challenge_participants": 10,
+  "double_mask_images": 20,
+  "grader_ids": [
+    "grader_01",
+    "grader_02"
+  ],
+  "copy_images": true
+}

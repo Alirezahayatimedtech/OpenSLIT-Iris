@@ -1,0 +1,3 @@
+participant_id,image_path
+SUBJECT-001,/absolute/path/to/image_001.jpg
+SUBJECT-002,/absolute/path/to/image_002.jpg

@@ -1,0 +1,14 @@
+{
+  "image_profile": "/absolute/path/to/image_profile.csv",
+  "source_manifest": "/absolute/path/to/source_manifest.csv",
+  "output_dir": "/absolute/path/to/private_output/pilot_v1",
+  "seed": 20260726,
+  "distribution_participants": 40,
+  "challenge_participants": 10,
+  "double_mask_images": 20,
+  "grader_ids": [
+    "grader_01",
+    "grader_02"
+  ],
+  "copy_images": true
+}
