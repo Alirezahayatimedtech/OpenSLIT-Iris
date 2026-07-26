@@ -9,6 +9,25 @@ adjudication.
 It does not perform diagnosis. It does not use historical center, nasal,
 temporal, eye-side, or laterality labels.
 
+## Current pilot: start here
+
+Each grader uses a separate Google Sheet:
+
+- [Grader 01 workbook](https://docs.google.com/spreadsheets/d/1Z3Hheb3DMOPX-XePyoeF3MQP0iO3nipPWOvQVDRlKo0/edit)
+- [Grader 02 workbook](https://docs.google.com/spreadsheets/d/105JYMkOkLbhONBMvmSlSLvGvOt_JYGz08_dvptPZfC4/edit)
+- [Aliased image folder](https://drive.google.com/drive/folders/1BwlZhfXiEw10ga31zuBNqOQmJrO211_3)
+
+For a grader:
+
+1. Open the assigned sheet and read `START HERE`.
+2. Open `Review Images`.
+3. Click `OPEN IMAGE`.
+4. Complete the visible yellow dropdown cells.
+5. Repeat until `Remaining` is 0.
+
+Do not infer or record left/right, laterality, center, nasal, or temporal.
+Graders must not view each other's sheets before both submissions are frozen.
+
 ## Scientific design of the first pilot
 
 The included SLIT configuration selects 50 images from 50 unique participants:
@@ -79,7 +98,8 @@ python3 -m openslit.collaboration apply-links \
   --index collaboration_runs/slit_pilot_v1/shared/pilot_image_index.csv
 ```
 
-7. Import each XLSX file into Google Sheets or edit it directly.
+7. Import each XLSX file into Google Sheets or edit it directly. The generated
+   workbook opens on `START HERE`; the review tab exposes only the core fields.
 8. Download completed files as XLSX.
 9. Validate each submission before analysis.
 
@@ -163,6 +183,7 @@ selection.
 
 ## Project documentation
 
+- [Contribution and dataset onboarding guide](CONTRIBUTING.md)
 - [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
 - [Google Drive and grader procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
 - [Master implementation specification](OpenSLIT_Iris_Master_Implementation_Spec.md)

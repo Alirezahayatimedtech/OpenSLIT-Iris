@@ -28,19 +28,25 @@ filename. Do not rename images after generating the pilot.
 ## Graders
 
 1. Open only the assigned workbook.
-2. Enter the assigned `grader_id` exactly as provided.
-3. Open the corresponding aliased image.
-4. Complete the yellow response cells.
-5. Use only values from the dropdowns.
+2. Read `START HERE`.
+3. Open `Review Images`.
+4. Click `OPEN IMAGE`.
+5. Complete the visible yellow cells using the dropdowns.
 6. Record the date as `YYYY-MM-DD`.
-7. Grade only visible structures.
-8. Do not infer eye side, laterality, center, nasal, or temporal.
-9. Do not discuss individual cases with the other grader before submission.
-10. Return the completed XLSX file to the data custodian.
+7. Repeat until `Remaining` is 0.
+8. Grade only visible structures.
+9. Do not infer eye side, laterality, center, nasal, or temporal.
+10. Do not discuss individual cases with the other grader before submission.
+11. Return the completed file to the data custodian.
 
-Do not change blue reference cells, row count, image identifiers, or column
-names. Google Sheets may remove Excel worksheet protection; the validator still
-detects reference changes.
+The grader identity is already assigned and hidden. Six detailed artifact
+fields are hidden and optional: focus, exposure, reflection, slit beam,
+eyelid/eyelash, and off-axis problems. The custodian can unhide them for
+targeted review without changing the core submission.
+
+Do not change blue reference cells, hidden machine headers, row count, image
+identifiers, or column names. Google Sheets may remove Excel worksheet
+protection; the validator still detects reference changes.
 
 ## Mask annotators
 
