@@ -71,12 +71,6 @@ Required judgments:
 
 - acquisition eligibility;
 - A/B/C/D quality grade;
-- focus problem;
-- exposure problem;
-- reflection burden;
-- slit-beam burden;
-- eyelid/eyelash burden;
-- off-axis problem;
 - pupil visibility;
 - outer iris visibility;
 - segmentation feasibility;
@@ -84,7 +78,18 @@ Required judgments:
 - primary exclusion reason;
 - confidence.
 
-Comments are optional. All other response fields are required.
+Optional structured detail:
+
+- focus problem;
+- exposure problem;
+- reflection burden;
+- slit-beam burden;
+- eyelid/eyelash burden;
+- off-axis problem.
+
+Comments and structured artifact details are optional. This keeps the primary
+pilot burden low while preserving controlled fields for difficult cases and
+targeted secondary review.
 
 ## Operational burden scale
 

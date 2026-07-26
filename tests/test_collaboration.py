@@ -11,7 +11,11 @@ from PIL import Image
 
 from openslit.collaboration.pilot import PilotConfig, build_pilot, sha256_file
 from openslit.collaboration.profiler import build_image_profile
-from openslit.collaboration.schema import ALLOWED_VALUES, FORBIDDEN_SHARED_COLUMNS
+from openslit.collaboration.schema import (
+    ALLOWED_VALUES,
+    FORBIDDEN_SHARED_COLUMNS,
+    REQUIRED_RESPONSE_COLUMNS,
+)
 from openslit.collaboration.validation import merge_submissions, validate_submission
 
 
@@ -128,19 +132,38 @@ class CollaborationPilotTest(unittest.TestCase):
             self.assertEqual(errors, [])
 
             workbook = load_workbook(submission)
-            sheet = workbook["quality_grading"]
+            self.assertEqual(
+                workbook.sheetnames,
+                [
+                    "START HERE",
+                    "Review Images",
+                    "Detailed Instructions",
+                    "Definitions",
+                ],
+            )
+            self.assertEqual(workbook.active.title, "START HERE")
+            sheet = workbook["Review Images"]
             headers = [cell.value for cell in sheet[1]]
-            for row_number in range(2, sheet.max_row + 1):
+            self.assertTrue(sheet.row_dimensions[1].hidden)
+            self.assertEqual(sheet["E2"].value, "OPEN IMAGE")
+            self.assertTrue(sheet.column_dimensions["J"].hidden)
+            self.assertEqual(workbook["START HERE"]["B10"].value, 10)
+            self.assertTrue(
+                workbook["START HERE"]["B8"].value.startswith("=COUNTIFS(")
+            )
+            for row_number in range(3, sheet.max_row + 1):
                 sheet.cell(
                     row=row_number,
                     column=headers.index("review_date_yyyy_mm_dd") + 1,
                     value="2026-07-26",
                 )
-                for field, values in ALLOWED_VALUES.items():
+                for field in REQUIRED_RESPONSE_COLUMNS:
+                    if field not in ALLOWED_VALUES:
+                        continue
                     sheet.cell(
                         row=row_number,
                         column=headers.index(field) + 1,
-                        value=values[0],
+                        value=ALLOWED_VALUES[field][0],
                     )
             workbook.save(submission)
             _, errors = validate_submission(submission, index, require_complete=True)
@@ -189,19 +212,21 @@ class CollaborationPilotTest(unittest.TestCase):
             ]
             for workbook_path in workbooks:
                 workbook = load_workbook(workbook_path)
-                sheet = workbook["quality_grading"]
+                sheet = workbook["Review Images"]
                 headers = [cell.value for cell in sheet[1]]
-                for row_number in range(2, sheet.max_row + 1):
+                for row_number in range(3, sheet.max_row + 1):
                     sheet.cell(
                         row=row_number,
                         column=headers.index("review_date_yyyy_mm_dd") + 1,
                         value="2026-07-26",
                     )
-                    for field, values in ALLOWED_VALUES.items():
+                    for field in REQUIRED_RESPONSE_COLUMNS:
+                        if field not in ALLOWED_VALUES:
+                            continue
                         sheet.cell(
                             row=row_number,
                             column=headers.index(field) + 1,
-                            value=values[0],
+                            value=ALLOWED_VALUES[field][0],
                         )
                 workbook.save(workbook_path)
             metrics = merge_submissions(
