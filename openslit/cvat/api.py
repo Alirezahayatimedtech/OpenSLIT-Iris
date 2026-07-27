@@ -74,7 +74,9 @@ def authenticated_client(host: str) -> Iterator[Any]:
 
 
 def _find_unique_by_name(resources: list[Any], name: str, kind: str) -> Any | None:
-    matches = [resource for resource in resources if getattr(resource, "name", None) == name]
+    matches = [
+        resource for resource in resources if getattr(resource, "name", None) == name
+    ]
     if len(matches) > 1:
         ids = [getattr(resource, "id", None) for resource in matches]
         raise RuntimeError(f"Multiple {kind} resources named {name!r} exist: {ids}")
@@ -96,9 +98,14 @@ def _resolve_user_id(client: Any, username: str | None) -> int | None:
     return int(exact[0].id)
 
 
-def _validate_existing_project_labels(project: Any, schema: AnnotationSchema) -> None:
-    project.fetch()
-    observed = {getattr(label, "name", "") for label in (project.labels or [])}
+def _validate_existing_project_labels(
+    client: Any, project: Any, schema: AnnotationSchema
+) -> None:
+    data, _ = client.api_client.labels_api.list(
+        project_id=int(project.id), page_size=100
+    )
+    labels = list(getattr(data, "results", []) or [])
+    observed = {getattr(label, "name", "") for label in labels}
     expected = {item.name for item in schema.classes if item.id != 0}
     if observed != expected:
         raise RuntimeError(
@@ -123,7 +130,7 @@ def _create_or_reuse_project(
                 f"CVAT project {config.project_name!r} already exists. "
                 "Use --allow-existing to reuse it after label validation."
             )
-        _validate_existing_project_labels(existing, schema)
+        _validate_existing_project_labels(client, existing, schema)
         return existing, False
 
     project = client.projects.create(
