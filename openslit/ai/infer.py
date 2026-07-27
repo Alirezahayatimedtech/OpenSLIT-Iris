@@ -1,4 +1,4 @@
-"""Inference, probability export, and uncertainty maps for OpenSLIT models."""
+"""Inference, probability export, uncertainty maps, and quality gates."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from openslit.annotation.schema import load_annotation_schema
 from .config import AIWorkflowConfig
 from .data import IMAGENET_MEAN, IMAGENET_STD
 from .metrics import predictive_entropy
+from .quality import assess_mask_quality
 from .registry import build_model, extract_logits
 
 
@@ -48,7 +49,7 @@ def run_inference(
     split: str = "test",
     output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Run frozen-model inference on one split and save masks and uncertainty maps."""
+    """Run frozen-model inference and save masks, uncertainty, and reject flags."""
 
     torch, functional = _require_torch()
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
@@ -78,7 +79,7 @@ def run_inference(
     masks_dir.mkdir(parents=True, exist_ok=True)
     probabilities_dir.mkdir(parents=True, exist_ok=True)
     entropy_dir.mkdir(parents=True, exist_ok=True)
-    manifest_rows: list[dict[str, str | float]] = []
+    manifest_rows: list[dict[str, Any]] = []
 
     with torch.no_grad():
         for row in table.itertuples(index=False):
@@ -98,12 +99,16 @@ def run_inference(
             prediction = probabilities.argmax(axis=0).astype(np.uint8)
             entropy = predictive_entropy(probabilities, axis=0).astype(np.float32)
             confidence = probabilities.max(axis=0)
+            quality = assess_mask_quality(prediction, schema, entropy=entropy)
 
             mask_file = f"{image_id}_mask.png"
             probability_file = f"{image_id}_probabilities.npz"
             entropy_file = f"{image_id}_entropy.npy"
             Image.fromarray(prediction, mode="L").save(masks_dir / mask_file)
-            np.savez_compressed(probabilities_dir / probability_file, probabilities=probabilities)
+            np.savez_compressed(
+                probabilities_dir / probability_file,
+                probabilities=probabilities,
+            )
             np.save(entropy_dir / entropy_file, entropy)
             manifest_rows.append(
                 {
@@ -117,15 +122,20 @@ def run_inference(
                     "mean_confidence": float(confidence.mean()),
                     "mean_entropy": float(entropy.mean()),
                     "high_uncertainty_fraction": float((entropy >= 0.5).mean()),
+                    "quality_gate_accepted": quality.accepted,
+                    "quality_gate_flags": "|".join(quality.flags),
+                    **quality.measurements,
                 }
             )
 
     manifest_path = output_dir / "prediction_manifest.csv"
-    pd.DataFrame(manifest_rows).to_csv(manifest_path, index=False)
+    manifest = pd.DataFrame(manifest_rows)
+    manifest.to_csv(manifest_path, index=False)
     summary = {
         "model_id": model_id,
         "split": split,
         "images": len(manifest_rows),
+        "quality_gate_rejected": int((~manifest["quality_gate_accepted"]).sum()),
         "checkpoint_path": str(checkpoint_path),
         "manifest_path": str(manifest_path),
         "masks_dir": str(masks_dir),
