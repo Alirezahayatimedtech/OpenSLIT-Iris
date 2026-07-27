@@ -43,5 +43,10 @@
     "config_path": "ai_workflow_v1.json",
     "gate": "locked_until_human_consensus",
     "manual_pilot_must_remain_ai_blind": true
+  },
+  "features": {
+    "config_path": "feature_extraction_v1.json",
+    "gate": "locked_until_final_versioned_masks",
+    "raw_ai_masks_are_not_valid_feature_sources": true
   }
 }
