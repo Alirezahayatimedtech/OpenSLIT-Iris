@@ -66,7 +66,9 @@ class SegmentationDataset:
         if not mask_path.is_file():
             raise FileNotFoundError(mask_path)
         with Image.open(image_path) as source:
-            image = source.convert("RGB").resize(
+            rgb = source.convert("RGB")
+            original_size = (rgb.height, rgb.width)
+            image = rgb.resize(
                 (self.input_size, self.input_size),
                 resample=Image.Resampling.BILINEAR,
             )
@@ -85,5 +87,5 @@ class SegmentationDataset:
             "mask": mask_tensor,
             "image_id": str(row["image_id"]),
             "image_file": str(row["image_file"]),
-            "original_size": tuple(reversed(Image.open(image_path).size)),
+            "original_size": original_size,
         }
