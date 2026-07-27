@@ -8,82 +8,60 @@ OpenSLIT-Iris is an open-source workflow for building reliable iris-segmentation
 
 It connects:
 
-- **Google Drive and Google Sheets** for image access and quality grading;
+- **Google Drive and Sheets** for image access and quality grading;
 - **self-hosted CVAT** for pixel-level annotation;
-- **OpenSLIT tools** for blinding, validation, disagreement analysis and senior adjudication.
+- **OpenSLIT tools** for blinding, validation, disagreement analysis, AI assistance and senior adjudication.
 
 It does not perform diagnosis.
 
-## How the collaboration works
+## Collaboration workflow
 
 ```text
                          Data custodian
                               │
-                  selects and aliases images
+                   selects and aliases images
                               │
              ┌────────────────┴────────────────┐
              ▼                                 ▼
          Grader 01                         Grader 02
-     private Google Sheet              private Google Sheet
-             │                                 │
-     private CVAT project               private CVAT project
+     private Sheet + CVAT               private Sheet + CVAT
              └────────────────┬────────────────┘
                               ▼
                     automated comparison
                               ▼
                     senior ophthalmologist
                               ▼
-                  final consensus dataset
+                   final consensus dataset
+                              ▼
+              AI benchmark and assisted annotation
 ```
 
-The two graders work independently from beginning to end. They cannot see each other's Sheet or CVAT project.
-
-The senior ophthalmologist reviews only the disagreements after both submissions are frozen. Original annotations are never overwritten.
+The two graders work independently. They cannot see each other's Sheet or CVAT project. The senior reviews disagreements only after both submissions are frozen. Original annotations are never overwritten.
 
 ## What each person does
 
-### Grader 01 and Grader 02
+**Graders** review image quality in a private Google Sheet, then segment the same locked images in separate CVAT projects.
 
-1. Open the assigned private Google Sheet.
-2. Review every aliased slit-lamp image.
-3. Record image quality, visibility, artefacts and segmentation feasibility.
-4. Submit the Sheet for freezing.
-5. Open the assigned private CVAT project.
-6. Segment the locked double-annotation images.
-7. Submit the CVAT task.
+**Senior ophthalmologist** reviews both assessments, both masks, disagreement overlays and quantitative metrics, then accepts one result, creates consensus or requests a versioned revision.
 
-### Senior ophthalmologist
+**Data custodian** manages access, freezes submissions and runs the workflow commands.
 
-The senior receives a disagreement package containing:
+## Quick start
 
-- both quality assessments;
-- both segmentation masks;
-- disagreement overlays;
-- class-level Dice and IoU;
-- pupil-centre and visible-iris area differences;
-- structured options to accept one annotation, create consensus or request revision.
-
-## Quick start for the project administrator
-
-### 1. Build the blinded pilot
+Build the blinded pilot:
 
 ```bash
 python -m openslit.collaboration build \
   --config configs/pilot_slit_dataset.json
 ```
 
-The current pilot contains:
-
-- 50 images from 50 participants for independent quality grading;
-- 20 predetermined images for independent double segmentation.
-
-### 2. Install the integrations
+Install Drive and CVAT integrations:
 
 ```bash
 python -m pip install -e '.[cvat,google]'
 ```
 
-### 3. Start local CVAT
+Start local CVAT:
 
 ```bash
 cp deployment/cvat/.env.example deployment/cvat/.env
@@ -92,152 +70,84 @@ deployment/cvat/cvat.sh up
 deployment/cvat/cvat.sh create-superuser
 ```
 
-CVAT will be available at:
+Edit `configs/workflow_pilot_v1.json` with the grader accounts, senior account, CVAT usernames and Google Drive parent-folder ID.
 
-```text
-http://localhost:8080
-```
-
-Create one ordinary CVAT account for each grader.
-
-### 4. Configure the workflow
-
-Edit:
-
-```text
-configs/workflow_pilot_v1.json
-```
-
-Replace the placeholder values for:
-
-- grader Google accounts;
-- grader CVAT usernames;
-- senior ophthalmologist Google account;
-- Google Drive parent-folder ID.
-
-Set the Google service-account credential locally:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
-```
-
-Never commit credentials or clinical images to GitHub.
-
-### 5. Create the Drive workspace
+Then run:
 
 ```bash
 openslit-workflow --config configs/workflow_pilot_v1.json check
 openslit-workflow --config configs/workflow_pilot_v1.json bootstrap-drive
 ```
 
-This creates:
-
-```text
-OpenSLIT-Iris Pilot v1/
-├── 01_Aliased_Images/
-├── 02_grader_01/
-├── 03_grader_02/
-├── 04_Adjudication/
-└── 05_Final_Consensus/
-```
-
-### 6. Freeze grading and open CVAT
-
-After both graders complete their Sheets:
+After both graders finish quality grading:
 
 ```bash
-openslit-workflow --config configs/workflow_pilot_v1.json \
-  freeze-grading --grader grader_01
-
-openslit-workflow --config configs/workflow_pilot_v1.json \
-  freeze-grading --grader grader_02
-
+openslit-workflow --config configs/workflow_pilot_v1.json freeze-grading --grader grader_01
+openslit-workflow --config configs/workflow_pilot_v1.json freeze-grading --grader grader_02
 openslit-workflow --config configs/workflow_pilot_v1.json setup-cvat
 ```
 
-The CVAT projects are created only after both grading submissions are frozen.
-
-### 7. Freeze segmentation and build senior review
+After both CVAT tasks are complete:
 
 ```bash
-openslit-workflow --config configs/workflow_pilot_v1.json \
-  freeze-segmentation --grader grader_01
-
-openslit-workflow --config configs/workflow_pilot_v1.json \
-  freeze-segmentation --grader grader_02
-
+openslit-workflow --config configs/workflow_pilot_v1.json freeze-segmentation --grader grader_01
+openslit-workflow --config configs/workflow_pilot_v1.json freeze-segmentation --grader grader_02
 openslit-workflow --config configs/workflow_pilot_v1.json build-adjudication
 openslit-workflow --config configs/workflow_pilot_v1.json upload-adjudication
 ```
 
-Check progress at any time:
+## AI stage
+
+AI remains locked until the independent human pilot and senior consensus are complete.
+
+The AI workflow then:
+
+1. creates participant-level train, validation and untouched test splits;
+2. trains **U-Net** and **SegFormer** baselines;
+3. optionally compares **nnU-Net 2D** as an external reference;
+4. compares AI, Grader 01 and Grader 02 against senior consensus;
+5. records uncertainty and failure cases;
+6. allows a senior-approved model to pre-populate new CVAT correction tasks;
+7. selects balanced active-learning batches using uncertainty, model disagreement, diversity and random controls.
+
+Install the AI tools:
 
 ```bash
-openslit-workflow --config configs/workflow_pilot_v1.json status
+python -m pip install -e '.[ai]'
+openslit-ai --config configs/ai_workflow_v1.json check --configuration-only
 ```
+
+The manual pilot never shows AI masks to graders. AI-assisted annotation starts only after independent held-out evaluation and senior approval.
 
 ## Annotation classes
 
-Protocol v1 uses:
-
 ```text
-0 = background / other ocular tissue
-1 = pupil
-2 = visible iris
-3 = reflection
-4 = slit-beam artefact
-5 = eyelid occlusion
-6 = eyelash occlusion
-7 = uncertain / ungradable region
+0  background / other ocular tissue
+1  pupil
+2  visible iris
+3  reflection
+4  slit-beam artefact
+5  eyelid occlusion
+6  eyelash occlusion
+7  uncertain / ungradable region
 ```
 
-Background is implicit in CVAT. Annotators draw the seven non-background classes and label only visible structures.
-
-The machine-readable source of truth is:
-
-```text
-configs/annotation_schema_v1.json
-```
+The source of truth is `configs/annotation_schema_v1.json`.
 
 ## Data protection
 
-Keep these outside GitHub:
-
-- patient identifiers and private source keys;
-- slit-lamp images;
-- Google credentials;
-- CVAT credentials;
-- grader submissions;
-- exported masks;
-- workflow state and adjudication files.
-
-Aliased eye photographs remain sensitive research data and still require approved storage and access control.
+Never commit patient identifiers, images, credentials, submissions, masks, checkpoints, probability maps or workflow state. Aliased eye photographs remain sensitive research data.
 
 ## Documentation
 
 - [End-to-end grader workflow](docs/END_TO_END_WORKFLOW.md)
+- [AI-assisted segmentation and active learning](docs/AI_ASSISTED_SEGMENTATION.md)
 - [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
-- [Google Drive and grader procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
+- [Google Drive procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
 - [Local CVAT deployment](deployment/cvat/README.md)
+- [Local AI runtime](deployment/ai/README.md)
 - [Annotation Protocol v1.0](docs/ANNOTATION_PROTOCOL_V1.md)
-- [Annotation examples](docs/ANNOTATION_EXAMPLES.md)
-- [Dataset onboarding guide](CONTRIBUTING.md)
 
 ## Current stage
 
-Implemented:
-
-- reproducible image selection and blinding;
-- private Google Sheets for two independent graders;
-- self-hosted CVAT integration;
-- frozen and versioned submissions;
-- mask validation and disagreement analysis;
-- senior adjudication and targeted revision tasks.
-
-Next:
-
-- complete and adjudicate the pilot;
-- add accepted real-image examples;
-- develop segmentation baselines;
-- introduce AI-assisted annotation;
-- validate quantitative iris features.
+The infrastructure is ready. The next scientific gate is to complete the two-grader pilot, freeze senior consensus masks and only then begin independent AI benchmarking and AI-assisted CVAT annotation.

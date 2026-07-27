@@ -1,0 +1,13 @@
+services:
+  openslit-ai:
+    build:
+      context: ../..
+      dockerfile: deployment/ai/Dockerfile
+    env_file:
+      - .env
+    working_dir: /workspace/OpenSLIT-Iris
+    volumes:
+      - ../..:/workspace/OpenSLIT-Iris
+      - ../../.runtime:/workspace/OpenSLIT-Iris/.runtime
+    stdin_open: true
+    tty: true

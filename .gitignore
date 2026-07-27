@@ -25,3 +25,16 @@ deployment/google/.env
 *service-account*.json
 *google-credentials*.json
 *oauth-token*.json
+
+# AI runtime configuration, checkpoints, predictions, caches, and exports.
+deployment/ai/.env
+checkpoints/
+model_checkpoints/
+predictions/
+probability_maps/
+uncertainty_maps/
+active_learning_batches/
+*.pt
+*.pth
+*.ckpt
+*.onnx
