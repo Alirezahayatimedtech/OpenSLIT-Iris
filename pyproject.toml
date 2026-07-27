@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 openslit-collab = "openslit.collaboration.cli:main"
+openslit-validate-masks = "openslit.annotation.validate_masks:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
