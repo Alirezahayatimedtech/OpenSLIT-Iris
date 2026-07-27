@@ -38,3 +38,8 @@ active_learning_batches/
 *.pth
 *.ckpt
 *.onnx
+
+# Quantitative feature outputs, previews, and repeatability reports.
+feature_outputs/
+iris_feature_runs/
+repeatability_results/
