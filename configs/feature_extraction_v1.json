@@ -1,0 +1,53 @@
+{
+  "workflow_config_path": "workflow_pilot_v1.json",
+  "feature_version": "1.0.0",
+  "image_dir": "../collaboration_runs/slit_pilot_v1/drive_upload/images",
+  "manifest_path": "../collaboration_runs/slit_pilot_v1/workflow/adjudication/final_consensus_manifest.csv",
+  "masks_dir": "../collaboration_runs/slit_pilot_v1/workflow/adjudication/consensus_masks",
+  "schema_path": "annotation_schema_v1.json",
+  "output_dir": "../collaboration_runs/slit_pilot_v1/features",
+  "source_requirements": {
+    "allowed_review_status": [
+      "senior_consensus",
+      "senior_approved",
+      "human_corrected_ai"
+    ],
+    "require_gradable": true,
+    "require_mask_sha256": true
+  },
+  "normalization": {
+    "angular_samples": 360,
+    "radial_samples": 64,
+    "minimum_valid_angle_fraction": 0.35
+  },
+  "color": {
+    "normalization": "gray_world",
+    "radial_zones": 3,
+    "angular_sectors": 8
+  },
+  "texture": {
+    "gray_levels": 16,
+    "glcm_distances": [1, 2],
+    "glcm_angles_degrees": [0, 45, 90, 135],
+    "lbp_points": 8,
+    "lbp_radius": 1,
+    "haar_levels": 2
+  },
+  "quality": {
+    "minimum_visible_iris_pixels": 500,
+    "minimum_valid_polar_fraction": 0.30,
+    "maximum_uncertain_fraction": 0.20,
+    "maximum_artifact_fraction": 0.45,
+    "minimum_laplacian_variance": 15.0
+  },
+  "preview": {
+    "enabled": true,
+    "max_images": 50
+  },
+  "drive": {
+    "upload_enabled": true,
+    "folder_name": "06_Feature_Extraction",
+    "grader_role": "reader",
+    "adjudicator_role": "writer"
+  }
+}
