@@ -13,3 +13,9 @@ collaboration_runs/
 feasibility_audit/
 feasibility_report/
 OpenSLIT_SLIT_Dataset_Feasibility_Audit.ipynb
+
+# Local CVAT installation, credentials, exports, and backups.
+.runtime/
+deployment/cvat/.env
+cvat_exports/
+cvat_backups/

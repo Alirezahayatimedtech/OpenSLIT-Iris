@@ -1,0 +1,20 @@
+{
+  "project_name": "OpenSLIT-Iris Pilot v1",
+  "schema_path": "annotation_schema_v1.json",
+  "image_dir": "../collaboration_runs/slit_pilot_v1/drive_upload/images",
+  "manifest_path": "../collaboration_runs/slit_pilot_v1/shared/mask_task_manifest.csv",
+  "image_column": "image_file",
+  "selection_column": "independent_double_annotation",
+  "selection_values": ["true", "1", "yes"],
+  "segment_size": 0,
+  "tasks": [
+    {
+      "name": "OpenSLIT-Iris Pilot v1 - Independent annotation A",
+      "assignee_username": "replace_with_grader_01_username"
+    },
+    {
+      "name": "OpenSLIT-Iris Pilot v1 - Independent annotation B",
+      "assignee_username": "replace_with_grader_02_username"
+    }
+  ]
+}
