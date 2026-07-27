@@ -58,6 +58,7 @@ def assess_mask_quality(
             measurements={"unknown_class_count": len(unknown)},
         )
 
+    background_id = schema.class_by_name["background"].id
     pupil_id = schema.class_by_name["pupil"].id
     iris_id = schema.class_by_name["iris"].id
     uncertain_id = schema.class_by_name["uncertain"].id
@@ -69,7 +70,7 @@ def assess_mask_quality(
         mask,
         [schema.class_by_name[name].id for name in artifact_names],
     )
-    foreground = mask != schema.background_value
+    foreground = mask != background_id
     pupil_pixels = int(pupil.sum())
     iris_pixels = int(iris.sum())
     foreground_pixels = int(foreground.sum())
