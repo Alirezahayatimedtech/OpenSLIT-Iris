@@ -16,6 +16,7 @@ Each grader uses a separate Google Sheet:
 - [Grader 01 workbook](https://docs.google.com/spreadsheets/d/1Z3Hheb3DMOPX-XePyoeF3MQP0iO3nipPWOvQVDRlKo0/edit)
 - [Grader 02 workbook](https://docs.google.com/spreadsheets/d/105JYMkOkLbhONBMvmSlSLvGvOt_JYGz08_dvptPZfC4/edit)
 - [Aliased image folder](https://drive.google.com/drive/folders/1BwlZhfXiEw10ga31zuBNqOQmJrO211_3)
+- [Living manuscript draft](https://docs.google.com/document/d/1yfS8j6wyrARqofp_8xMleIZ_PPzjXGJLIT7EFIzHRT4/edit)
 
 For a grader:
 
