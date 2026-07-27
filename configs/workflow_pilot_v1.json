@@ -1,0 +1,42 @@
+{
+  "workflow_id": "openslit_iris_pilot_v1",
+  "pilot_dir": "../collaboration_runs/slit_pilot_v1",
+  "image_dir": "../collaboration_runs/slit_pilot_v1/drive_upload/images",
+  "image_index_path": "../collaboration_runs/slit_pilot_v1/shared/pilot_image_index.csv",
+  "mask_manifest_path": "../collaboration_runs/slit_pilot_v1/shared/mask_task_manifest.csv",
+  "schema_path": "annotation_schema_v1.json",
+  "state_path": "../collaboration_runs/slit_pilot_v1/workflow/workflow_state.json",
+  "graders": [
+    {
+      "grader_id": "grader_01",
+      "email": "replace_grader_01@example.com",
+      "cvat_username": "replace_grader_01_cvat_username",
+      "workbook_path": "../collaboration_runs/slit_pilot_v1/shared/grader_01_quality_grading.xlsx"
+    },
+    {
+      "grader_id": "grader_02",
+      "email": "replace_grader_02@example.com",
+      "cvat_username": "replace_grader_02_cvat_username",
+      "workbook_path": "../collaboration_runs/slit_pilot_v1/shared/grader_02_quality_grading.xlsx"
+    }
+  ],
+  "adjudicator": {
+    "adjudicator_id": "senior_ophthalmologist",
+    "email": "replace_senior@example.com",
+    "cvat_username": "replace_senior_cvat_username"
+  },
+  "drive": {
+    "parent_folder_id": "replace_google_drive_parent_folder_id",
+    "root_folder_name": "OpenSLIT-Iris Pilot v1",
+    "impersonated_user": "",
+    "notify_users": false,
+    "convert_workbooks_to_google_sheets": true
+  },
+  "cvat": {
+    "host": "http://localhost:8080",
+    "project_name_template": "OpenSLIT-Iris Pilot v1 - {grader_id}",
+    "task_name_template": "OpenSLIT-Iris Pilot v1 - {grader_id} - segmentation v{version}",
+    "export_format": "Segmentation mask 1.0",
+    "segment_size": 0
+  }
+}
