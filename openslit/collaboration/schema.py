@@ -196,16 +196,17 @@ for field in [
         "The grader cannot assign another category confidently."
     )
 
+# This mirrors configs/annotation_schema_v1.json. The JSON schema is the
+# machine-readable source of truth for CVAT and exported masks.
 MASK_CLASS_DEFINITIONS = {
-    0: "background/non-eye",
+    0: "background / other ocular tissue",
     1: "pupil",
-    2: "visible iris tissue",
-    3: "sclera/conjunctiva",
-    4: "eyelid",
-    5: "eyelash or dense lash occlusion",
-    6: "corneal/specular reflection",
-    7: "slit-beam or overexposed illumination artefact",
-    8: "uncertain/ungradable region",
+    2: "visible iris",
+    3: "corneal / specular reflection",
+    4: "slit-beam artefact",
+    5: "eyelid occlusion",
+    6: "eyelash occlusion",
+    7: "uncertain / ungradable region",
 }
 
 FORBIDDEN_SHARED_COLUMNS = {
