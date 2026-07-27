@@ -18,21 +18,43 @@ class MaskQualityResult:
 
 
 def _largest_component_fraction(mask: np.ndarray) -> float:
+    """Return the fraction of positive pixels in the largest 4-connected component."""
+
     mask = np.asarray(mask, dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError(f"Connected-component mask must be 2-D; got {mask.shape}")
     total = int(mask.sum())
     if total == 0:
         return 0.0
-    try:
-        from scipy import ndimage
-    except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError(
-            "Install AI dependencies with: python -m pip install -e '.[ai]'"
-        ) from exc
-    labels, count = ndimage.label(mask)
-    if count == 0:
-        return 0.0
-    component_sizes = np.bincount(labels.reshape(-1))[1:]
-    return float(component_sizes.max() / total)
+
+    height, width = mask.shape
+    visited = np.zeros(mask.shape, dtype=bool)
+    largest = 0
+    for y_value, x_value in np.argwhere(mask):
+        y = int(y_value)
+        x = int(x_value)
+        if visited[y, x]:
+            continue
+        visited[y, x] = True
+        stack = [(y, x)]
+        size = 0
+        while stack:
+            current_y, current_x = stack.pop()
+            size += 1
+            for neighbor_y, neighbor_x in (
+                (current_y - 1, current_x),
+                (current_y + 1, current_x),
+                (current_y, current_x - 1),
+                (current_y, current_x + 1),
+            ):
+                if not (0 <= neighbor_y < height and 0 <= neighbor_x < width):
+                    continue
+                if visited[neighbor_y, neighbor_x] or not mask[neighbor_y, neighbor_x]:
+                    continue
+                visited[neighbor_y, neighbor_x] = True
+                stack.append((neighbor_y, neighbor_x))
+        largest = max(largest, size)
+    return float(largest / total)
 
 
 def assess_mask_quality(
