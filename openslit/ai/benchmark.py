@@ -35,7 +35,7 @@ def _source_manifest(path: Path, source_name: str) -> pd.DataFrame:
     if data["image_id"].duplicated().any():
         raise ValueError(f"{source_name} manifest has duplicate image IDs")
     return data[["image_id", "mask_file"]].rename(
-        columns={"mask_file": f"mask_file_{source_name}"}
+        columns={"mask_file": "source_mask_file"}
     )
 
 
@@ -65,7 +65,11 @@ def compare_source_to_consensus(
         missing_ids = sorted(set(consensus["image_id"]) - set(joined["image_id"]))
         raise ValueError(f"{source_name} is missing consensus images: {missing_ids[:20]}")
 
-    output_dir = output_dir or (config.output_dir / "benchmarks" / source_name)
+    safe_source = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in source_name
+    )
+    output_dir = output_dir or (config.output_dir / "benchmarks" / safe_source)
     output_dir.mkdir(parents=True, exist_ok=True)
     image_rows: list[dict[str, Any]] = []
     class_rows: list[dict[str, Any]] = []
@@ -74,9 +78,7 @@ def compare_source_to_consensus(
     for row in joined.itertuples(index=False):
         image_id = str(row.image_id)
         reference = _load_mask(consensus_masks_dir / str(row.mask_file))
-        prediction = _load_mask(
-            source_masks_dir / str(getattr(row, f"mask_file_{source_name}"))
-        )
+        prediction = _load_mask(source_masks_dir / str(row.source_mask_file))
         per_class = multiclass_metrics(reference, prediction, class_ids)
         foreground_dice = [
             values["dice"] for class_id, values in per_class.items() if class_id != 0
