@@ -4,23 +4,78 @@
   <img src="docs/assets/annotation_segmentation_example.svg" alt="OpenSLIT-Iris segmentation example showing pupil, iris, reflection, slit-beam, eyelid, and eyelash labels" width="100%">
 </p>
 
-OpenSLIT-Iris is a reproducible workspace for quality-controlled iris
-phenotyping from slit-lamp photographs. The current implementation covers the
-first collaborative gate: blinded pilot selection, independent image-quality
-grading, mask-task preparation, submission validation, agreement analysis, and
-adjudication.
+OpenSLIT-Iris is a reproducible workspace for quality-controlled iris phenotyping from slit-lamp photographs. The current release provides an end-to-end collaboration pathway from blinded image selection to independent quality grading, isolated CVAT segmentation, automated disagreement analysis, senior adjudication, and versioned revision.
 
-It does not perform diagnosis. It does not use historical center, nasal,
-temporal, eye-side, or laterality labels.
+It does not perform diagnosis. It does not use historical center, nasal, temporal, eye-side, or laterality labels.
 
-## Interactive annotation with local CVAT
+## Start here: integrated two-grader workflow
 
-The repository now includes a free, self-hosted CVAT Community deployment and
-Python SDK integration. CVAT runs on the computer or institutional server that
-stores the aliased pilot images; raw clinical data do not need to be uploaded to
-a commercial annotation service.
+The recommended workflow uses:
 
-Start the local server:
+- **Google Drive and Google Sheets** for aliased-image access and structured image-quality grading;
+- **self-hosted CVAT Community** for pixel segmentation on your own computer or institutional server;
+- **OpenSLIT code** for blinding, access provisioning, state gates, validation, hashes, disagreement maps, senior review, and revisions;
+- **GitHub** for code and protocol versions only. Patient images, credentials, submissions, and exports remain outside Git.
+
+```text
+Data custodian
+      │
+      ├── selects 50 aliased images and locks the pilot
+      │
+      ├───────────────┬────────────────┐
+      ▼               ▼                │
+  Grader 01       Grader 02            │
+  private Sheet   private Sheet        │
+      │               │                │
+  isolated CVAT   isolated CVAT        │
+  project         project              │
+      └───────────────┬────────────────┘
+                      ▼
+          automated comparison package
+                      ▼
+             senior ophthalmologist
+                      │
+       accept A / accept B / consensus /
+          versioned revision request
+                      ▼
+              final consensus record
+```
+
+### Access design
+
+The bootstrap command creates this Google Drive structure:
+
+```text
+OpenSLIT-Iris Pilot v1/
+├── 01_Aliased_Images/
+├── 02_grader_01/
+├── 03_grader_02/
+├── 04_Adjudication/
+└── 05_Final_Consensus/
+```
+
+- Both graders and the senior receive read-only access to the aliased images.
+- Each grader can edit only their own quality-grading Sheet.
+- Graders cannot see each other's Sheet or CVAT project.
+- The senior receives the adjudication material only after the independent submissions are frozen.
+- Frozen submissions are never overwritten. Revisions create a new version.
+
+### Install
+
+Build the local blinded pilot first:
+
+```bash
+python -m openslit.collaboration build \
+  --config configs/pilot_slit_dataset.json
+```
+
+Install the Google Drive and CVAT integrations:
+
+```bash
+python -m pip install -e '.[cvat,google]'
+```
+
+Start free self-hosted CVAT Community:
 
 ```bash
 cp deployment/cvat/.env.example deployment/cvat/.env
@@ -29,161 +84,177 @@ deployment/cvat/cvat.sh up
 deployment/cvat/cvat.sh create-superuser
 ```
 
-Install the matching CVAT SDK integration:
+Create two ordinary CVAT accounts for the graders. Do not make them administrators or staff.
 
-```bash
-python -m pip install -e '.[cvat]'
+Create a Google Drive parent folder, share it as Editor with the Google service-account email, then configure:
+
+```text
+configs/workflow_pilot_v1.json
 ```
 
-Validate the local pilot plan:
+Replace the placeholder grader emails, CVAT usernames, senior email, and Drive parent-folder ID. Set Google credentials locally:
 
 ```bash
-openslit-cvat check --config configs/cvat_pilot_v1.json
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
 ```
 
-After creating separate CVAT accounts and replacing the placeholder usernames
-in `configs/cvat_pilot_v1.json`, create the project and two independent
-annotation tasks:
+Never commit the credential file.
+
+### Run the workflow
+
+Validate everything:
 
 ```bash
-set -a
-source deployment/cvat/.env
-set +a
-openslit-cvat setup --config configs/cvat_pilot_v1.json
+openslit-workflow --config configs/workflow_pilot_v1.json check
 ```
 
-See [the local CVAT deployment guide](deployment/cvat/README.md). The setup uses
-the machine-readable [Annotation Protocol v1.0](docs/ANNOTATION_PROTOCOL_V1.md)
-and uploads only images marked for independent double annotation.
+Create the Drive folders, upload aliased images, insert image links, and create the two private Google Sheets:
 
-## Current pilot: start here
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json bootstrap-drive
+```
 
-Each grader uses a separate Google Sheet for the image-quality grading stage:
+After each ophthalmologist finishes quality grading, freeze their Sheet:
 
-- [Grader 01 workbook](https://docs.google.com/spreadsheets/d/1Z3Hheb3DMOPX-XePyoeF3MQP0iO3nipPWOvQVDRlKo0/edit)
-- [Grader 02 workbook](https://docs.google.com/spreadsheets/d/105JYMkOkLbhONBMvmSlSLvGvOt_JYGz08_dvptPZfC4/edit)
-- [Aliased image folder](https://drive.google.com/drive/folders/1BwlZhfXiEw10ga31zuBNqOQmJrO211_3)
-- [Living manuscript draft](https://docs.google.com/document/d/1yfS8j6wyrARqofp_8xMleIZ_PPzjXGJLIT7EFIzHRT4/edit)
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  freeze-grading --grader grader_01
 
-For a grader:
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  freeze-grading --grader grader_02
+```
 
-1. Open the assigned sheet and read `START HERE`.
-2. Open `Review Images`.
-3. Click `OPEN IMAGE`.
-4. Complete the visible yellow dropdown cells.
-5. Repeat until `Remaining` is 0.
+Create two isolated CVAT projects containing the same predetermined double-annotation images:
 
-Do not infer or record left/right, laterality, center, nasal, or temporal.
-Graders must not view each other's sheets before both submissions are frozen.
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json setup-cvat
+```
+
+This command is blocked until both quality submissions are frozen.
+
+After each grader completes their CVAT task, export and freeze it:
+
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  freeze-segmentation --grader grader_01
+
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  freeze-segmentation --grader grader_02
+```
+
+Build and upload the senior disagreement package:
+
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json build-adjudication
+openslit-workflow --config configs/workflow_pilot_v1.json upload-adjudication
+```
+
+The senior package contains quality-grade disagreements, both masks, colored disagreement overlays, class-level Dice and IoU, pupil-center difference, visible-iris area difference, and an editable adjudication Sheet.
+
+Request a targeted revision without changing either original submission:
+
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  request-revision \
+  --image-id PILOT-I017 \
+  --from-grader grader_01 \
+  --reason "Superior eyelash was labelled as iris" \
+  --protocol-reference "Annotation Protocol v1.0, Eyelash class"
+
+openslit-workflow --config configs/workflow_pilot_v1.json \
+  create-revision-task --grader grader_01
+```
+
+The correction task contains only the disputed images and begins from the grader's latest frozen masks. The original CVAT task and v1 export remain unchanged.
+
+Check progress at any time:
+
+```bash
+openslit-workflow --config configs/workflow_pilot_v1.json status
+```
+
+Read the complete [end-to-end grader workflow](docs/END_TO_END_WORKFLOW.md).
 
 ## Scientific design of the first pilot
 
 The included SLIT configuration selects 50 images from 50 unique participants:
 
-- 40 participants and one image per participant are sampled using a recorded
-  pseudorandom seed.
-- 10 additional participants cover objective technical challenges: darkness,
-  brightness, blur, clipping, and overexposure.
-- Images from exact SHA-256 duplicate groups are excluded.
-- Source patient and filename information remains in a private key.
-- Shared images receive blinded patient and image aliases.
-- Two graders independently grade all 50 images.
-- Twenty predetermined images are marked for independent double mask
-  annotation.
+- 40 participants and one image per participant are sampled using a recorded pseudorandom seed;
+- 10 additional participants cover objective technical challenges: darkness, brightness, blur, clipping, and overexposure;
+- images from exact SHA-256 duplicate groups are excluded;
+- source patient and filename information remains in a private key;
+- shared images receive blinded patient and image aliases;
+- two graders independently grade all 50 images;
+- 20 predetermined images are assigned to both graders for independent mask annotation.
 
-The technical challenge panel is for protocol stress-testing. It must not be
-used to estimate the prevalence of poor-quality images in the full dataset.
+The technical challenge panel is for protocol stress-testing. It must not be used to estimate the prevalence of poor-quality images in the full dataset.
 
-## Build the local SLIT pilot
-
-From this directory:
+## Local pilot outputs
 
 ```bash
-python3 -m openslit.collaboration build \
+python -m openslit.collaboration build \
   --config configs/pilot_slit_dataset.json
 ```
 
-Generated material is written under
-`collaboration_runs/slit_pilot_v1/`:
+The builder creates:
 
 ```text
-private/
-  pilot_private_key.csv
-  selected_participants.csv
-shared/
-  pilot_image_index.csv
-  drive_links.csv
-  grader_01_quality_grading.xlsx
-  grader_02_quality_grading.xlsx
-  mask_task_manifest.csv
-drive_upload/
-  images/PILOT-I001.jpg ...
-run_manifest.json
+collaboration_runs/slit_pilot_v1/
+├── private/
+│   ├── pilot_private_key.csv
+│   └── selected_participants.csv
+├── shared/
+│   ├── pilot_image_index.csv
+│   ├── drive_links.csv
+│   ├── grader_01_quality_grading.xlsx
+│   ├── grader_02_quality_grading.xlsx
+│   └── mask_task_manifest.csv
+├── drive_upload/
+│   └── images/PILOT-I001.jpg ...
+└── run_manifest.json
 ```
 
-`private/` must never be placed in the collaborators' Google Drive folder or
-uploaded to CVAT. The builder refuses to overwrite a non-empty pilot directory.
-Change `output_dir` to a new version such as `slit_pilot_v2` when the frozen
-design changes. This prevents accidental deletion of submitted grades.
+`private/` must never be placed in the collaborators' Google Drive folder or uploaded to CVAT. The builder refuses to overwrite a non-empty pilot directory. Change `output_dir` to a new version when the frozen design changes.
 
-## Google Drive quality-grading workflow
+## Quality-grading variables
 
-1. Build the pilot.
-2. Upload only `drive_upload/images/` to a restricted Google Drive folder.
-   The current generated pilot also includes `drive_upload_images.zip` for
-   transfer; extract it before grading so each aliased image remains directly
-   accessible.
-3. Upload one grader workbook to each grader's separate private folder.
-4. Do not allow graders to see each other's completed workbook.
-5. Optionally paste image URLs into `shared/drive_links.csv`.
-6. Apply the URLs to both workbooks:
+Each ophthalmologist independently records:
 
-```bash
-python3 -m openslit.collaboration apply-links \
-  --links collaboration_runs/slit_pilot_v1/shared/drive_links.csv \
-  --workbook collaboration_runs/slit_pilot_v1/shared/grader_01_quality_grading.xlsx \
-  --workbook collaboration_runs/slit_pilot_v1/shared/grader_02_quality_grading.xlsx \
-  --index collaboration_runs/slit_pilot_v1/shared/pilot_image_index.csv
-```
+- acquisition eligibility;
+- A/B/C/D image-quality grade;
+- focus and exposure problems;
+- reflection and slit-beam burden;
+- eyelid/eyelash burden;
+- off-axis problem;
+- pupil and outer-iris visibility;
+- segmentation feasibility;
+- recommended inclusion for mask annotation;
+- exclusion reason;
+- confidence and optional comments.
 
-7. Import each XLSX file into Google Sheets or edit it directly. The generated
-   workbook opens on `START HERE`; the review tab exposes only the core fields.
-8. Download completed files as XLSX.
-9. Validate each submission before analysis.
+A grader's recommendation does not change the predetermined double-annotation subset. Both graders segment the same locked images so their masks remain comparable.
 
-Google Sheets is used only for image-quality grading and task tracking.
-Pixel-level masks are created in the self-hosted CVAT workspace and exported as
-indexed PNG or COCO data.
+## Validate and compare downloaded grading workbooks
 
-## Validate quality-grading submissions
+Validate one submission:
 
 ```bash
-python3 -m openslit.collaboration validate \
+python -m openslit.collaboration validate \
   --submission completed_grader_01.xlsx \
   --index collaboration_runs/slit_pilot_v1/shared/pilot_image_index.csv
 ```
 
-The validator checks:
-
-- exact pilot image coverage;
-- unchanged blinded reference fields;
-- controlled vocabulary;
-- required responses;
-- ISO review dates;
-- one consistent grader identity;
-- absence of patient, laterality, view, and clinical outcome fields.
-
-## Merge independent grades
+Merge two independent submissions:
 
 ```bash
-python3 -m openslit.collaboration merge \
+python -m openslit.collaboration merge \
   --first completed_grader_01.xlsx \
   --second completed_grader_02.xlsx \
   --index collaboration_runs/slit_pilot_v1/shared/pilot_image_index.csv \
   --output collaboration_runs/slit_pilot_v1/agreement
 ```
 
-Outputs:
+Outputs include:
 
 - `grades_long.csv`;
 - `adjudication_queue.csv`;
@@ -191,12 +262,60 @@ Outputs:
 - percent agreement for core decisions;
 - quadratic-weighted Cohen's kappa for A/B/C/D quality grades.
 
-Disagreements remain unresolved until an adjudicator fills the adjudication
-fields.
+The original grades remain preserved after adjudication.
+
+## Annotation classes
+
+The machine-readable source of truth is:
+
+```text
+configs/annotation_schema_v1.json
+```
+
+Protocol v1 uses exactly these indexed mask values:
+
+```text
+0 = background / other ocular tissue
+1 = pupil
+2 = visible iris
+3 = reflection
+4 = slit-beam artefact
+5 = eyelid occlusion
+6 = eyelash occlusion
+7 = uncertain / ungradable region
+```
+
+Background is implicit in CVAT, so graders draw the seven non-background labels. Hidden anatomy is never inferred beneath lids, lashes, reflections, or illumination artefacts.
+
+Validate normalized masks:
+
+```bash
+openslit-validate-masks \
+  --schema configs/annotation_schema_v1.json \
+  --manifest annotations/annotation_manifest.csv \
+  --images annotations/images \
+  --masks annotations/masks \
+  --report annotations/validation_report.csv
+```
 
 ## Use with another dataset
 
-Create an image profile with these columns:
+Create a source manifest with at least:
+
+```text
+participant_id
+image_path
+```
+
+Generate the objective image profile:
+
+```bash
+python -m openslit.collaboration profile \
+  --manifest /path/to/source_manifest.csv \
+  --output /path/to/image_profile.csv
+```
+
+The profile contains:
 
 ```text
 participant_id
@@ -209,28 +328,11 @@ channel_clip_fraction
 laplacian_variance
 ```
 
-Each row represents one image. `participant_id` must be a trusted subject-level
-identifier. Configure paths and sample sizes using
-[`configs/pilot_template.json`](configs/pilot_template.json).
-
-Start from [`templates/source_manifest_template.csv`](templates/source_manifest_template.csv)
-and generate the profile:
-
-```bash
-python3 -m openslit.collaboration profile \
-  --manifest /path/to/source_manifest.csv \
-  --output /path/to/image_profile.csv
-```
-
-Datasets using different column names can specify `--participant-column` and
-`--image-column`.
-
-The pilot builder intentionally ignores every other column. This prevents
-historical view, laterality, disease label, or outcome fields from affecting
-selection.
+The pilot builder intentionally ignores disease, outcome, laterality, historical view, and other clinical fields during selection.
 
 ## Project documentation
 
+- [End-to-end grader workflow](docs/END_TO_END_WORKFLOW.md)
 - [Contribution and dataset onboarding guide](CONTRIBUTING.md)
 - [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
 - [Google Drive and grader procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
@@ -239,38 +341,36 @@ selection.
 - [Annotation examples](docs/ANNOTATION_EXAMPLES.md)
 - [Master implementation specification](OpenSLIT_Iris_Master_Implementation_Spec.md)
 
-Dataset-derived feasibility tables, reports, source paths, participant mappings,
-images, CVAT credentials, exports, and generated pilot runs remain local and are
-excluded from Git.
+Dataset-derived reports, source paths, participant mappings, images, Google credentials, CVAT credentials, exports, workflow state, and generated pilot runs remain local and are excluded from Git.
 
 ## Current scope
 
 Implemented:
 
-- reproducible patient and image selection;
-- blind aliases;
-- private/shared separation;
-- independent grader workbooks;
-- controlled grading vocabulary;
-- Google Drive links;
-- mask task manifest;
-- validation;
-- intergrader agreement;
-- adjudication queue;
-- annotation protocol v1.0;
-- machine-readable annotation schema;
-- annotation mask validation;
-- local CVAT Community deployment wrapper;
-- CVAT SDK project and independent-task creation.
+- reproducible subject-level image selection and technical-challenge sampling;
+- blind aliases and private/shared separation;
+- independent grader workbooks and controlled vocabulary;
+- Google Drive API provisioning and private Google Sheets;
+- grader-specific permission downgrade when a submission is frozen;
+- immutable versioned grading snapshots with SHA-256 hashes;
+- local CVAT Community deployment;
+- two isolated grader CVAT projects created through the Python SDK;
+- gated CVAT access after both quality submissions freeze;
+- CVAT Segmentation Mask export normalization to OpenSLIT class IDs;
+- independent mask validation and immutable versioned snapshots;
+- class-level Dice and IoU, disagreement overlays, and geometric differences;
+- senior adjudication Sheet and structured outcomes;
+- versioned revision requests without overwriting original annotations;
+- pre-populated CVAT correction tasks containing only disputed images;
+- final adjudication validation.
 
-Not yet implemented:
+Next stages:
 
-- CVAT annotation export conversion and disagreement maps;
 - accepted real-image annotation examples after adjudication;
-- segmentation baselines;
+- segmentation baselines and AI-assisted annotation;
 - supervised training;
-- feature extraction;
+- quantitative feature extraction;
 - independent test validation;
 - release packaging.
 
-The pilot must be completed and adjudicated before those stages become valid.
+The pilot must be completed and adjudicated before large-scale annotation or model training becomes scientifically valid.
