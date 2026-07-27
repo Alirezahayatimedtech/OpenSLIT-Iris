@@ -125,19 +125,6 @@ def upload_feature_run(
         "folder_web_view_link": run_folder.get("webViewLink"),
         "files": uploaded,
     }
-    run["drive"] = drive_record
-    state.data.setdefault("features", {})["status"] = "UPLOADED"
-    state.data["drive"].setdefault("folders", {})["features"] = feature_root["id"]
-    state.record_event(
-        "iris_feature_run_uploaded",
-        "data_custodian",
-        {
-            "run_id": run["run_id"],
-            "folder_id": run_folder["id"],
-            "files": len(uploaded),
-        },
-    )
-    state.save()
     local_manifest = run_dir / "drive_upload_manifest.json"
     local_manifest.write_text(
         json.dumps(drive_record, indent=2, sort_keys=True) + "\n",
@@ -154,6 +141,20 @@ def upload_feature_run(
             "openslit_feature_run_id": str(run["run_id"]),
         },
     )
+    drive_record["manifest_drive_file_id"] = manifest_remote["id"]
+    run["drive"] = drive_record
+    state.data.setdefault("features", {})["status"] = "UPLOADED"
+    state.data["drive"].setdefault("folders", {})["features"] = feature_root["id"]
+    state.record_event(
+        "iris_feature_run_uploaded",
+        "data_custodian",
+        {
+            "run_id": run["run_id"],
+            "folder_id": run_folder["id"],
+            "files": len(uploaded) + 1,
+        },
+    )
+    state.save()
     return {
         "run_id": run["run_id"],
         "folder_id": run_folder["id"],
