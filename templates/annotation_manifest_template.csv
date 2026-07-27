@@ -1,0 +1,2 @@
+image_id,image_file,mask_file,annotator_id,protocol_version,gradable,review_status,comments
+PILOT-I001,PILOT-I001.jpg,PILOT-I001_mask.png,grader_01,1.0.0,true,not_reviewed,
