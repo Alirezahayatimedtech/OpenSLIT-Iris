@@ -13,9 +13,52 @@ adjudication.
 It does not perform diagnosis. It does not use historical center, nasal,
 temporal, eye-side, or laterality labels.
 
+## Interactive annotation with local CVAT
+
+The repository now includes a free, self-hosted CVAT Community deployment and
+Python SDK integration. CVAT runs on the computer or institutional server that
+stores the aliased pilot images; raw clinical data do not need to be uploaded to
+a commercial annotation service.
+
+Start the local server:
+
+```bash
+cp deployment/cvat/.env.example deployment/cvat/.env
+chmod +x deployment/cvat/cvat.sh
+deployment/cvat/cvat.sh up
+deployment/cvat/cvat.sh create-superuser
+```
+
+Install the matching CVAT SDK integration:
+
+```bash
+python -m pip install -e '.[cvat]'
+```
+
+Validate the local pilot plan:
+
+```bash
+openslit-cvat check --config configs/cvat_pilot_v1.json
+```
+
+After creating separate CVAT accounts and replacing the placeholder usernames
+in `configs/cvat_pilot_v1.json`, create the project and two independent
+annotation tasks:
+
+```bash
+set -a
+source deployment/cvat/.env
+set +a
+openslit-cvat setup --config configs/cvat_pilot_v1.json
+```
+
+See [the local CVAT deployment guide](deployment/cvat/README.md). The setup uses
+the machine-readable [Annotation Protocol v1.0](docs/ANNOTATION_PROTOCOL_V1.md)
+and uploads only images marked for independent double annotation.
+
 ## Current pilot: start here
 
-Each grader uses a separate Google Sheet:
+Each grader uses a separate Google Sheet for the image-quality grading stage:
 
 - [Grader 01 workbook](https://docs.google.com/spreadsheets/d/1Z3Hheb3DMOPX-XePyoeF3MQP0iO3nipPWOvQVDRlKo0/edit)
 - [Grader 02 workbook](https://docs.google.com/spreadsheets/d/105JYMkOkLbhONBMvmSlSLvGvOt_JYGz08_dvptPZfC4/edit)
@@ -78,12 +121,12 @@ drive_upload/
 run_manifest.json
 ```
 
-`private/` must never be placed in the collaborators' Google Drive folder.
-The builder refuses to overwrite a non-empty pilot directory. Change
-`output_dir` to a new version such as `slit_pilot_v2` when the frozen design
-changes. This prevents accidental deletion of submitted grades.
+`private/` must never be placed in the collaborators' Google Drive folder or
+uploaded to CVAT. The builder refuses to overwrite a non-empty pilot directory.
+Change `output_dir` to a new version such as `slit_pilot_v2` when the frozen
+design changes. This prevents accidental deletion of submitted grades.
 
-## Google Drive workflow
+## Google Drive quality-grading workflow
 
 1. Build the pilot.
 2. Upload only `drive_upload/images/` to a restricted Google Drive folder.
@@ -108,11 +151,11 @@ python3 -m openslit.collaboration apply-links \
 8. Download completed files as XLSX.
 9. Validate each submission before analysis.
 
-Google Sheets is appropriate for quality grading and task tracking. Pixel masks
-must be drawn in CVAT or another image annotation system and exported as
+Google Sheets is used only for image-quality grading and task tracking.
+Pixel-level masks are created in the self-hosted CVAT workspace and exported as
 indexed PNG or COCO data.
 
-## Validate submissions
+## Validate quality-grading submissions
 
 ```bash
 python3 -m openslit.collaboration validate \
@@ -191,12 +234,14 @@ selection.
 - [Contribution and dataset onboarding guide](CONTRIBUTING.md)
 - [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
 - [Google Drive and grader procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
+- [Local CVAT deployment and API setup](deployment/cvat/README.md)
 - [Annotation Protocol v1.0](docs/ANNOTATION_PROTOCOL_V1.md)
 - [Annotation examples](docs/ANNOTATION_EXAMPLES.md)
 - [Master implementation specification](OpenSLIT_Iris_Master_Implementation_Spec.md)
 
 Dataset-derived feasibility tables, reports, source paths, participant mappings,
-images, and generated pilot runs remain local and are excluded from Git.
+images, CVAT credentials, exports, and generated pilot runs remain local and are
+excluded from Git.
 
 ## Current scope
 
@@ -214,11 +259,13 @@ Implemented:
 - adjudication queue;
 - annotation protocol v1.0;
 - machine-readable annotation schema;
-- annotation mask validation.
+- annotation mask validation;
+- local CVAT Community deployment wrapper;
+- CVAT SDK project and independent-task creation.
 
 Not yet implemented:
 
-- CVAT deployment and project import;
+- CVAT annotation export conversion and disagreement maps;
 - accepted real-image annotation examples after adjudication;
 - segmentation baselines;
 - supervised training;
