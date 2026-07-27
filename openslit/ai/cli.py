@@ -12,6 +12,7 @@ from openslit.workflow.state import WorkflowState
 from .active_learning import select_active_learning_batch
 from .benchmark import build_comparison_matrix, compare_source_to_consensus
 from .config import load_ai_workflow_config
+from .consensus import materialize_consensus_dataset
 from .cvat_assist import approve_model_for_assistance, create_ai_assisted_task
 from .infer import run_inference
 from .splits import create_grouped_splits, verify_split_manifest
@@ -22,8 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openslit-ai",
         description=(
-            "Run the OpenSLIT AI stages: patient-level splits, baseline training, "
-            "held-out benchmarking, CVAT pre-annotation, and active learning."
+            "Run the OpenSLIT AI stages: senior consensus, patient-level splits, "
+            "baseline training, held-out benchmarking, CVAT pre-annotation, and active learning."
         ),
     )
     parser.add_argument(
@@ -35,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = commands.add_parser("check", help="Validate AI configuration")
     check.add_argument("--configuration-only", action="store_true")
+
+    consensus = commands.add_parser(
+        "materialize-consensus",
+        help="Create training-ready masks from final senior adjudication",
+    )
+    consensus.add_argument("--queue", type=Path, required=True)
 
     splits = commands.add_parser("prepare-splits", help="Create patient-level splits")
     splits.add_argument("--output", type=Path, default=None)
@@ -103,6 +110,15 @@ def main() -> None:
     config = load_ai_workflow_config(args.config)
     if args.command == "check":
         result = config.validate(require_runtime_files=not args.configuration_only)
+    elif args.command == "materialize-consensus":
+        workflow_config = load_workflow_config(config.workflow_config_path)
+        state = WorkflowState.load_or_create(workflow_config)
+        result = materialize_consensus_dataset(
+            workflow_config,
+            config,
+            state,
+            args.queue,
+        )
     elif args.command == "prepare-splits":
         result = create_grouped_splits(config, args.output)
     elif args.command == "verify-splits":
