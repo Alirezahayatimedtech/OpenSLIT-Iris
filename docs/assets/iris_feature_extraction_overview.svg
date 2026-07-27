@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 520" role="img" aria-labelledby="title desc">
+  <title id="title">OpenSLIT-Iris feature extraction overview</title>
+  <desc id="desc">A slit-lamp image and segmentation are transformed into a normalized iris strip, then geometry, color, texture, and quality features are extracted.</desc>
+  <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8f9d"/>
+      <stop offset="0.45" stop-color="#bf9a55"/>
+      <stop offset="1" stop-color="#335c67"/>
+    </linearGradient>
+    <linearGradient id="strip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#375a68"/>
+      <stop offset="0.25" stop-color="#c4a15b"/>
+      <stop offset="0.5" stop-color="#6a7e56"/>
+      <stop offset="0.75" stop-color="#b78f50"/>
+      <stop offset="1" stop-color="#3f6a75"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.15"/>
+    </filter>
+    <style>
+      .title { font: 700 30px Arial, sans-serif; fill: #111827; }
+      .heading { font: 700 22px Arial, sans-serif; fill: #111827; }
+      .body { font: 16px Arial, sans-serif; fill: #374151; }
+      .small { font: 14px Arial, sans-serif; fill: #4b5563; }
+      .card { fill: #ffffff; stroke: #d1d5db; stroke-width: 2; rx: 18; filter: url(#shadow); }
+      .arrow { stroke: #64748b; stroke-width: 5; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="520" fill="#f8fafc"/>
+  <text x="50" y="52" class="title">From an approved mask to quantitative iris phenotypes</text>
+  <rect x="45" y="85" width="235" height="360" class="card"/>
+  <text x="162" y="122" text-anchor="middle" class="heading">1. Image + mask</text>
+  <circle cx="162" cy="255" r="102" fill="#f1f5f9" stroke="#94a3b8" stroke-width="4"/>
+  <circle cx="162" cy="255" r="82" fill="url(#iris)"/>
+  <circle cx="162" cy="255" r="32" fill="#111827"/>
+  <path d="M83 218 Q162 170 241 218" stroke="#7c3aed" stroke-width="12" opacity="0.65" fill="none"/>
+  <path d="M92 300 Q162 338 232 300" stroke="#7c3aed" stroke-width="12" opacity="0.65" fill="none"/>
+  <circle cx="208" cy="211" r="13" fill="#facc15" opacity="0.85"/>
+  <text x="162" y="390" text-anchor="middle" class="body">Pupil, visible iris and</text>
+  <text x="162" y="414" text-anchor="middle" class="body">artefact labels are versioned</text>
+  <path d="M290 265 H345" class="arrow"/>
+  <rect x="355" y="85" width="270" height="360" class="card"/>
+  <text x="490" y="122" text-anchor="middle" class="heading">2. Iris normalization</text>
+  <circle cx="490" cy="213" r="78" fill="url(#iris)" stroke="#334155" stroke-width="3"/>
+  <circle cx="490" cy="213" r="28" fill="#111827"/>
+  <g stroke="#ffffff" stroke-width="2" opacity="0.85">
+    <line x1="490" y1="185" x2="490" y2="135"/>
+    <line x1="510" y1="193" x2="545" y2="158"/>
+    <line x1="518" y1="213" x2="568" y2="213"/>
+    <line x1="510" y1="233" x2="545" y2="268"/>
+    <line x1="490" y1="241" x2="490" y2="291"/>
+    <line x1="470" y1="233" x2="435" y2="268"/>
+    <line x1="462" y1="213" x2="412" y2="213"/>
+    <line x1="470" y1="193" x2="435" y2="158"/>
+  </g>
+  <rect x="390" y="326" width="200" height="64" rx="8" fill="url(#strip)" stroke="#334155" stroke-width="2"/>
+  <line x1="390" y1="358" x2="590" y2="358" stroke="#ffffff" stroke-dasharray="5 5" opacity="0.6"/>
+  <text x="490" y="417" text-anchor="middle" class="body">Fixed radial and angular grid</text>
+  <path d="M635 265 H690" class="arrow"/>
+  <rect x="700" y="85" width="655" height="360" class="card"/>
+  <text x="1028" y="122" text-anchor="middle" class="heading">3. Interpretable feature families</text>
+  <rect x="730" y="150" width="140" height="235" rx="14" fill="#eff6ff" stroke="#93c5fd"/>
+  <circle cx="800" cy="213" r="43" fill="none" stroke="#2563eb" stroke-width="7"/>
+  <circle cx="800" cy="213" r="16" fill="#111827"/>
+  <line x1="800" y1="168" x2="800" y2="258" stroke="#2563eb" stroke-width="2"/>
+  <line x1="755" y1="213" x2="845" y2="213" stroke="#2563eb" stroke-width="2"/>
+  <text x="800" y="290" text-anchor="middle" class="heading">Geometry</text>
+  <text x="800" y="320" text-anchor="middle" class="small">area • diameter</text>
+  <text x="800" y="342" text-anchor="middle" class="small">circularity • centers</text>
+  <text x="800" y="364" text-anchor="middle" class="small">occlusion fractions</text>
+  <rect x="885" y="150" width="140" height="235" rx="14" fill="#f0fdf4" stroke="#86efac"/>
+  <circle cx="955" cy="213" r="43" fill="url(#iris)"/>
+  <path d="M955 170 A43 43 0 0 1 993 232" stroke="#f97316" stroke-width="10" fill="none"/>
+  <text x="955" y="290" text-anchor="middle" class="heading">Color</text>
+  <text x="955" y="320" text-anchor="middle" class="small">RGB • HSV • CIELAB</text>
+  <text x="955" y="342" text-anchor="middle" class="small">radial gradients</text>
+  <text x="955" y="364" text-anchor="middle" class="small">sector asymmetry</text>
+  <rect x="1040" y="150" width="140" height="235" rx="14" fill="#faf5ff" stroke="#d8b4fe"/>
+  <rect x="1065" y="175" width="90" height="76" rx="8" fill="url(#strip)"/>
+  <path d="M1070 234 L1080 205 L1090 220 L1100 185 L1110 226 L1120 195 L1130 214 L1148 179" stroke="#ffffff" stroke-width="3" fill="none"/>
+  <text x="1110" y="290" text-anchor="middle" class="heading">Texture</text>
+  <text x="1110" y="320" text-anchor="middle" class="small">LBP • GLCM</text>
+  <text x="1110" y="342" text-anchor="middle" class="small">Haar energies</text>
+  <text x="1110" y="364" text-anchor="middle" class="small">radial variation</text>
+  <rect x="1195" y="150" width="130" height="235" rx="14" fill="#fff7ed" stroke="#fdba74"/>
+  <circle cx="1260" cy="207" r="39" fill="#ffffff" stroke="#f97316" stroke-width="6"/>
+  <path d="M1238 208 L1254 224 L1285 188" stroke="#16a34a" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1260" y="290" text-anchor="middle" class="heading">Quality</text>
+  <text x="1260" y="320" text-anchor="middle" class="small">blur • exposure</text>
+  <text x="1260" y="342" text-anchor="middle" class="small">coverage • artefacts</text>
+  <text x="1260" y="364" text-anchor="middle" class="small">pass / flag / exclude</text>
+  <rect x="405" y="465" width="590" height="36" rx="18" fill="#e2e8f0"/>
+  <text x="700" y="489" text-anchor="middle" class="body">Every row keeps image ID, mask version, feature version, quality flags and provenance</text>
+</svg>
