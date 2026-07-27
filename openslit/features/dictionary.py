@@ -23,10 +23,8 @@ PREFIX_DESCRIPTIONS = {
 }
 
 UNIT_SUFFIXES = {
-    "_px": "pixels",
     "_area_px": "pixels^2",
-    "_fraction": "proportion",
-    "_ratio": "ratio",
+    "_px": "pixels",
     "_deg": "degrees",
     "_seconds": "seconds",
 }
@@ -36,6 +34,10 @@ def infer_unit(name: str) -> str:
     for suffix, unit in UNIT_SUFFIXES.items():
         if name.endswith(suffix):
             return unit
+    if "fraction" in name:
+        return "proportion"
+    if "ratio" in name:
+        return "ratio"
     if any(
         token in name
         for token in [
