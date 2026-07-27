@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openslit-iris"
-version = "0.3.0"
-description = "Reproducible collaborative grading, CVAT segmentation, AI assistance, and adjudication workflow for slit-lamp iris datasets"
+version = "0.4.0"
+description = "Reproducible collaborative grading, CVAT segmentation, AI assistance, adjudication, and quantitative iris feature extraction"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.24,<3",
@@ -39,6 +39,7 @@ openslit-validate-masks = "openslit.annotation.validate_masks:main"
 openslit-cvat = "openslit.cvat.cli:main"
 openslit-workflow = "openslit.workflow.cli:main"
 openslit-ai = "openslit.ai.cli:main"
+openslit-features = "openslit.features.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
