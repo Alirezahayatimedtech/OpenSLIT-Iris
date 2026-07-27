@@ -19,3 +19,9 @@ OpenSLIT_SLIT_Dataset_Feasibility_Audit.ipynb
 deployment/cvat/.env
 cvat_exports/
 cvat_backups/
+
+# Google Drive credentials and OAuth material.
+deployment/google/.env
+*service-account*.json
+*google-credentials*.json
+*oauth-token*.json
