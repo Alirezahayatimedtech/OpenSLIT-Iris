@@ -1,61 +1,55 @@
 # OpenSLIT-Iris
 
 <p align="center">
-  <img src="docs/assets/annotation_segmentation_example.svg" alt="OpenSLIT-Iris segmentation example showing pupil, iris, reflection, slit-beam, eyelid, and eyelash labels" width="100%">
+  <img src="docs/assets/annotation_segmentation_example.svg" alt="OpenSLIT-Iris segmentation example" width="100%">
 </p>
 
-OpenSLIT-Iris is an open-source workflow for building reliable iris-segmentation datasets from slit-lamp photographs.
+OpenSLIT-Iris is an open-source workflow for turning slit-lamp photographs into reliable iris segmentations and quantitative iris features.
 
 It connects:
 
-- **Google Drive and Sheets** for image access and quality grading;
-- **self-hosted CVAT** for pixel-level annotation;
-- **OpenSLIT tools** for blinding, validation, disagreement analysis, AI assistance and senior adjudication.
+- **Google Drive and Sheets** for controlled image access and quality grading;
+- **self-hosted CVAT** for pixel-level annotation and AI-assisted correction;
+- **OpenSLIT tools** for blinding, comparison, senior consensus, AI evaluation and feature extraction.
 
 It does not perform diagnosis.
 
-## Collaboration workflow
+## Workflow
 
 ```text
-                         Data custodian
-                              │
-                   selects and aliases images
-                              │
-             ┌────────────────┴────────────────┐
-             ▼                                 ▼
-         Grader 01                         Grader 02
-     private Sheet + CVAT               private Sheet + CVAT
-             └────────────────┬────────────────┘
-                              ▼
-                    automated comparison
-                              ▼
-                    senior ophthalmologist
-                              ▼
-                   final consensus dataset
-                              ▼
-              AI benchmark and assisted annotation
+Aliased images
+      ↓
+Two independent ophthalmologists
+      ↓
+Senior consensus masks
+      ↓
+AI benchmark and assisted correction
+      ↓
+Quality-controlled iris features
+      ↓
+Repeatability and clinical research
 ```
 
-The two graders work independently. They cannot see each other's Sheet or CVAT project. The senior reviews disagreements only after both submissions are frozen. Original annotations are never overwritten.
+The two graders cannot see each other's Sheet or CVAT project. AI masks are never shown during the independent manual pilot. Original submissions are frozen and never overwritten.
 
-## What each person does
+## Feature extraction
 
-**Graders** review image quality in a private Google Sheet, then segment the same locked images in separate CVAT projects.
+<p align="center">
+  <img src="docs/assets/iris_feature_extraction_overview.svg" alt="OpenSLIT-Iris feature extraction overview" width="100%">
+</p>
 
-**Senior ophthalmologist** reviews both assessments, both masks, disagreement overlays and quantitative metrics, then accepts one result, creates consensus or requests a versioned revision.
+The feature module extracts:
 
-**Data custodian** manages access, freezes submissions and runs the workflow commands.
+- **geometry:** pupil and iris area, diameter, circularity, eccentricity, centers and occlusion fractions;
+- **color:** raw and normalized RGB, HSV and CIELAB statistics, radial gradients and sector asymmetry;
+- **texture:** LBP, GLCM and Haar-wavelet measurements from a normalized iris strip;
+- **quality:** blur, exposure, illumination, visible coverage, artefact burden and source-mask provenance.
+
+Color and texture features are produced only when the final mask passes the feature-quality gate. Geometry and quality fields remain available for audit.
 
 ## Quick start
 
-Build the blinded pilot:
-
-```bash
-python -m openslit.collaboration build \
-  --config configs/pilot_slit_dataset.json
-```
-
-Install Drive and CVAT integrations:
+Install the main integrations:
 
 ```bash
 python -m pip install -e '.[cvat,google]'
@@ -70,26 +64,22 @@ deployment/cvat/cvat.sh up
 deployment/cvat/cvat.sh create-superuser
 ```
 
-Edit `configs/workflow_pilot_v1.json` with the grader accounts, senior account, CVAT usernames and Google Drive parent-folder ID.
+Edit `configs/workflow_pilot_v1.json` with the Google accounts, CVAT usernames and Drive parent-folder ID.
 
-Then run:
+Create the Drive workspace:
 
 ```bash
 openslit-workflow --config configs/workflow_pilot_v1.json check
 openslit-workflow --config configs/workflow_pilot_v1.json bootstrap-drive
 ```
 
-After both graders finish quality grading:
+After quality grading and segmentation are complete:
 
 ```bash
 openslit-workflow --config configs/workflow_pilot_v1.json freeze-grading --grader grader_01
 openslit-workflow --config configs/workflow_pilot_v1.json freeze-grading --grader grader_02
 openslit-workflow --config configs/workflow_pilot_v1.json setup-cvat
-```
 
-After both CVAT tasks are complete:
-
-```bash
 openslit-workflow --config configs/workflow_pilot_v1.json freeze-segmentation --grader grader_01
 openslit-workflow --config configs/workflow_pilot_v1.json freeze-segmentation --grader grader_02
 openslit-workflow --config configs/workflow_pilot_v1.json build-adjudication
@@ -98,26 +88,64 @@ openslit-workflow --config configs/workflow_pilot_v1.json upload-adjudication
 
 ## AI stage
 
-AI remains locked until the independent human pilot and senior consensus are complete.
-
-The AI workflow then:
-
-1. creates participant-level train, validation and untouched test splits;
-2. trains **U-Net** and **SegFormer** baselines;
-3. optionally compares **nnU-Net 2D** as an external reference;
-4. compares AI, Grader 01 and Grader 02 against senior consensus;
-5. records uncertainty and failure cases;
-6. allows a senior-approved model to pre-populate new CVAT correction tasks;
-7. selects balanced active-learning batches using uncertainty, model disagreement, diversity and random controls.
-
-Install the AI tools:
+The AI stage starts only after senior consensus.
 
 ```bash
 python -m pip install -e '.[ai]'
 openslit-ai --config configs/ai_workflow_v1.json check --configuration-only
 ```
 
-The manual pilot never shows AI masks to graders. AI-assisted annotation starts only after independent held-out evaluation and senior approval.
+It supports U-Net, SegFormer, an external nnU-Net reference, uncertainty maps, human–AI comparison, senior-approved CVAT pre-annotations, crossover evaluation and balanced active learning.
+
+## Extract iris features
+
+Validate the configuration:
+
+```bash
+openslit-features --config configs/feature_extraction_v1.json \
+  check --configuration-only
+```
+
+After final consensus masks exist:
+
+```bash
+openslit-features --config configs/feature_extraction_v1.json check
+openslit-features --config configs/feature_extraction_v1.json \
+  extract --run-id pilot_features_v1
+```
+
+Each run produces:
+
+```text
+iris_features.csv
+iris_features.xlsx
+feature_quality.csv
+feature_dictionary.csv
+feature_report.html
+previews/
+```
+
+Upload the derived results to the existing controlled Drive workspace:
+
+```bash
+openslit-features --config configs/feature_extraction_v1.json \
+  upload-drive --run-id pilot_features_v1
+```
+
+This creates `06_Feature_Extraction/<run_id>/`. Source images and masks are not duplicated.
+
+## Repeatability
+
+Use repeated images of the same eye before testing clinical associations:
+
+```bash
+openslit-features repeatability \
+  --features /path/to/iris_features.csv \
+  --group-column repeat_group_id \
+  --output-dir /path/to/repeatability_results
+```
+
+The module reports ICC(2,1), within-group coefficient of variation, repeatability coefficient and Bland–Altman agreement.
 
 ## Annotation classes
 
@@ -136,13 +164,13 @@ The source of truth is `configs/annotation_schema_v1.json`.
 
 ## Data protection
 
-Never commit patient identifiers, images, credentials, submissions, masks, checkpoints, probability maps or workflow state. Aliased eye photographs remain sensitive research data.
+Never commit patient identifiers, images, credentials, submissions, masks, checkpoints, probability maps, feature outputs or workflow state. Aliased eye photographs remain sensitive research data.
 
 ## Documentation
 
 - [End-to-end grader workflow](docs/END_TO_END_WORKFLOW.md)
 - [AI-assisted segmentation and active learning](docs/AI_ASSISTED_SEGMENTATION.md)
-- [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
+- [Quantitative iris feature extraction](docs/FEATURE_EXTRACTION.md)
 - [Google Drive procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
 - [Local CVAT deployment](deployment/cvat/README.md)
 - [Local AI runtime](deployment/ai/README.md)
@@ -150,4 +178,4 @@ Never commit patient identifiers, images, credentials, submissions, masks, check
 
 ## Current stage
 
-The infrastructure is ready. The next scientific gate is to complete the two-grader pilot, freeze senior consensus masks and only then begin independent AI benchmarking and AI-assisted CVAT annotation.
+The annotation, adjudication, AI and feature-extraction infrastructure is implemented. Real feature analysis remains locked until the two-grader pilot is completed and final masks are approved.
