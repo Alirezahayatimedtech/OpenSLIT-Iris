@@ -38,5 +38,10 @@
     "task_name_template": "OpenSLIT-Iris Pilot v1 - {grader_id} - segmentation v{version}",
     "export_format": "Segmentation mask 1.0",
     "segment_size": 0
+  },
+  "ai": {
+    "config_path": "ai_workflow_v1.json",
+    "gate": "locked_until_human_consensus",
+    "manual_pilot_must_remain_ai_blind": true
   }
 }
