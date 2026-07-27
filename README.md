@@ -1,5 +1,9 @@
 # OpenSLIT-Iris
 
+<p align="center">
+  <img src="docs/assets/annotation_segmentation_example.svg" alt="OpenSLIT-Iris segmentation example showing pupil, iris, reflection, slit-beam, eyelid, and eyelash labels" width="100%">
+</p>
+
 OpenSLIT-Iris is a reproducible workspace for quality-controlled iris
 phenotyping from slit-lamp photographs. The current implementation covers the
 first collaborative gate: blinded pilot selection, independent image-quality
@@ -187,6 +191,8 @@ selection.
 - [Contribution and dataset onboarding guide](CONTRIBUTING.md)
 - [Collaborative pilot protocol](docs/COLLABORATIVE_PILOT_PROTOCOL.md)
 - [Google Drive and grader procedure](docs/GOOGLE_DRIVE_WORKFLOW.md)
+- [Annotation Protocol v1.0](docs/ANNOTATION_PROTOCOL_V1.md)
+- [Annotation examples](docs/ANNOTATION_EXAMPLES.md)
 - [Master implementation specification](OpenSLIT_Iris_Master_Implementation_Spec.md)
 
 Dataset-derived feasibility tables, reports, source paths, participant mappings,
