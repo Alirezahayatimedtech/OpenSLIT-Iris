@@ -14,9 +14,15 @@ dependencies = [
   "Pillow>=10,<12",
 ]
 
+[project.optional-dependencies]
+cvat = [
+  "cvat-sdk==2.64.0",
+]
+
 [project.scripts]
 openslit-collab = "openslit.collaboration.cli:main"
 openslit-validate-masks = "openslit.annotation.validate_masks:main"
+openslit-cvat = "openslit.cvat.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
