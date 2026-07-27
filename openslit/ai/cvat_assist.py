@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import zipfile
 from pathlib import Path
@@ -134,13 +135,49 @@ def create_ai_assisted_task(
     missing = required - set(batch.columns)
     if missing:
         raise ValueError(f"Batch manifest is missing columns: {sorted(missing)}")
-    local_manifest = ai_config.output_dir / "cvat" / batch_id / "task_manifest.csv"
-    local_manifest.parent.mkdir(parents=True, exist_ok=True)
+    if batch["image_id"].duplicated().any():
+        raise ValueError("Batch manifest contains duplicate image IDs")
+
+    prediction = pd.read_csv(
+        prediction_manifest_path,
+        dtype=str,
+        keep_default_na=False,
+    )
+    prediction_required = {"image_id", "image_file", "mask_file"}
+    prediction_missing = prediction_required - set(prediction.columns)
+    if prediction_missing:
+        raise ValueError(
+            f"Prediction manifest is missing columns: {sorted(prediction_missing)}"
+        )
+    filtered_prediction = prediction[
+        prediction["image_id"].isin(set(batch["image_id"]))
+    ].copy()
+    if set(filtered_prediction["image_id"]) != set(batch["image_id"]):
+        missing_predictions = sorted(
+            set(batch["image_id"]) - set(filtered_prediction["image_id"])
+        )
+        raise ValueError(f"AI predictions are missing batch images: {missing_predictions}")
+    expected_files = batch.set_index("image_id")["image_file"].to_dict()
+    mismatched = [
+        image_id
+        for image_id, image_file in filtered_prediction.set_index("image_id")[
+            "image_file"
+        ].to_dict().items()
+        if expected_files.get(image_id) != image_file
+    ]
+    if mismatched:
+        raise ValueError(f"Prediction image filenames differ from batch: {mismatched}")
+
+    local_dir = ai_config.output_dir / "cvat" / batch_id
+    local_manifest = local_dir / "task_manifest.csv"
+    local_prediction_manifest = local_dir / "prediction_manifest.csv"
+    local_dir.mkdir(parents=True, exist_ok=True)
     prepared = batch[["image_id", "image_file"]].rename(
         columns={"image_id": "blinded_image_id"}
     )
     prepared["independent_double_annotation"] = "true"
     prepared.to_csv(local_manifest, index=False)
+    filtered_prediction.to_csv(local_prediction_manifest, index=False)
 
     project_template = str(
         ai_config.ai_assisted_cvat.get(
@@ -185,7 +222,7 @@ def create_ai_assisted_task(
     archive_path = local_manifest.parent / "ai_preannotations.zip"
     build_cvat_segmentation_archive(
         ai_config,
-        prediction_manifest_path,
+        local_prediction_manifest,
         prediction_masks_dir,
         archive_path,
     )
@@ -193,8 +230,12 @@ def create_ai_assisted_task(
     try:
         from cvat_sdk import models
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError("Install CVAT dependencies with: python -m pip install -e '.[cvat]'") from exc
-    with archive_path.open("rb") as handle, authenticated_client(workflow_config.cvat.host) as client:
+        raise RuntimeError(
+            "Install CVAT dependencies with: python -m pip install -e '.[cvat]'"
+        ) from exc
+    with archive_path.open("rb") as handle, authenticated_client(
+        workflow_config.cvat.host
+    ) as client:
         response = client.api_client.tasks_api.create_annotations(
             task_id,
             format=workflow_config.cvat.export_format,
@@ -209,6 +250,7 @@ def create_ai_assisted_task(
         "grader_id": grader_id,
         "model_id": model_id,
         "batch_id": batch_id,
+        "images": len(batch),
         "project_id": int(result["project_id"]),
         "task_id": task_id,
         "project_name": project_name,
@@ -234,24 +276,46 @@ def approve_model_for_assistance(
 
     if not benchmark_summary_path.is_file():
         raise FileNotFoundError(benchmark_summary_path)
+    if not approved_by.strip():
+        raise ValueError("approved_by is required")
+    benchmark = json.loads(benchmark_summary_path.read_text(encoding="utf-8"))
+    if benchmark.get("reference") != "senior_consensus":
+        raise ValueError("Model approval requires a senior-consensus benchmark")
+    if int(benchmark.get("images", 0)) < 1:
+        raise ValueError("Model approval requires a non-empty independent benchmark")
+    if benchmark.get("source") not in {model_id, f"ai_{model_id}"}:
+        raise ValueError(
+            "Benchmark source does not match the model being approved: "
+            f"{benchmark.get('source')!r} vs {model_id!r}"
+        )
+
     ai_state = state.data.setdefault(
         "ai",
-        {"status": "EVALUATION", "models": {}, "assisted_tasks": [], "active_learning_batches": []},
+        {
+            "status": "EVALUATION",
+            "models": {},
+            "assisted_tasks": [],
+            "active_learning_batches": [],
+        },
     )
     record = ai_state.setdefault("models", {}).setdefault(model_id, {})
     record.update(
         {
             "approved_for_assistance": True,
             "approved_utc": utc_now(),
-            "approved_by": approved_by,
+            "approved_by": approved_by.strip(),
             "benchmark_summary_path": str(benchmark_summary_path),
+            "benchmark_images": int(benchmark["images"]),
+            "benchmark_macro_foreground_dice_mean": benchmark.get(
+                "macro_foreground_dice_mean"
+            ),
             "notes": notes,
         }
     )
     ai_state["status"] = "ASSISTED_ANNOTATION_READY"
     state.record_event(
         "ai_model_approved_for_assistance",
-        approved_by,
+        approved_by.strip(),
         {"model_id": model_id, "benchmark_summary_path": str(benchmark_summary_path)},
     )
     state.save()
