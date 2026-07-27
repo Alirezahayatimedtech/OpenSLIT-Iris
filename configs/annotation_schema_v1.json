@@ -1,0 +1,109 @@
+{
+  "protocol_name": "OpenSLIT-Iris Annotation Protocol",
+  "protocol_version": "1.0.0",
+  "task_type": "single-label semantic segmentation",
+  "supported_input": "Frontal or nearly frontal visible-light slit-lamp photographs acquired with diffuse or broad-beam illumination",
+  "mask_format": {
+    "type": "indexed_png",
+    "background_value": 0,
+    "one_class_per_pixel": true
+  },
+  "class_precedence_high_to_low": [
+    "uncertain",
+    "eyelash",
+    "eyelid",
+    "reflection",
+    "slit_beam",
+    "pupil",
+    "iris",
+    "background"
+  ],
+  "classes": [
+    {
+      "id": 0,
+      "name": "background",
+      "display_name": "Background / other ocular tissue",
+      "color_rgb": [0, 0, 0],
+      "required_per_gradable_image": false,
+      "description": "All pixels not assigned to a target class, including sclera, conjunctiva, surrounding skin, and image background."
+    },
+    {
+      "id": 1,
+      "name": "pupil",
+      "display_name": "Pupil",
+      "color_rgb": [32, 76, 255],
+      "required_per_gradable_image": true,
+      "description": "The visible pupillary aperture bounded by the pupillary margin. Artefact pixels over the pupil receive the artefact label instead."
+    },
+    {
+      "id": 2,
+      "name": "iris",
+      "display_name": "Visible iris",
+      "color_rgb": [35, 190, 95],
+      "required_per_gradable_image": true,
+      "description": "Visible iris tissue from the pupillary margin to the visible limbal boundary. Do not infer iris hidden by lids, lashes, reflections, or slit-beam artefact."
+    },
+    {
+      "id": 3,
+      "name": "reflection",
+      "display_name": "Corneal / specular reflection",
+      "color_rgb": [255, 220, 30],
+      "required_per_gradable_image": false,
+      "description": "Discrete saturated or near-saturated specular highlights that obscure underlying ocular texture."
+    },
+    {
+      "id": 4,
+      "name": "slit_beam",
+      "display_name": "Slit-beam artefact",
+      "color_rgb": [255, 65, 65],
+      "required_per_gradable_image": false,
+      "description": "The broad or narrow illumination band produced by the slit lamp when it obscures or materially changes iris appearance."
+    },
+    {
+      "id": 5,
+      "name": "eyelid",
+      "display_name": "Eyelid occlusion",
+      "color_rgb": [160, 80, 220],
+      "required_per_gradable_image": false,
+      "description": "Visible upper or lower eyelid tissue that occludes the globe or iris. Do not label all surrounding periocular skin."
+    },
+    {
+      "id": 6,
+      "name": "eyelash",
+      "display_name": "Eyelash occlusion",
+      "color_rgb": [255, 140, 25],
+      "required_per_gradable_image": false,
+      "description": "Individual or dense eyelashes crossing and occluding the ocular surface, iris, or pupil."
+    },
+    {
+      "id": 7,
+      "name": "uncertain",
+      "display_name": "Uncertain / ungradable region",
+      "color_rgb": [145, 145, 145],
+      "required_per_gradable_image": false,
+      "description": "Pixels that cannot be assigned confidently because the anatomical boundary or artefact type is indeterminate. Use sparingly and document the reason."
+    }
+  ],
+  "required_manifest_columns": [
+    "image_id",
+    "image_file",
+    "mask_file",
+    "annotator_id",
+    "protocol_version"
+  ],
+  "optional_manifest_columns": [
+    "gradable",
+    "review_status",
+    "comments"
+  ],
+  "forbidden_shared_fields": [
+    "patient_name",
+    "medical_record_number",
+    "source_patient_id",
+    "laterality",
+    "eye_side",
+    "nasal_temporal_orientation",
+    "diagnosis",
+    "clinical_outcome"
+  ]
+}
