@@ -15,6 +15,7 @@ from .config import load_ai_workflow_config
 from .consensus import materialize_consensus_dataset
 from .cvat_assist import approve_model_for_assistance, create_ai_assisted_task
 from .infer import run_inference
+from .productivity import create_crossover_plan, summarize_crossover_results
 from .splits import create_grouped_splits, verify_split_manifest
 from .train import train_model
 
@@ -36,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = commands.add_parser("check", help="Validate AI configuration")
     check.add_argument("--configuration-only", action="store_true")
+    commands.add_parser("status", help="Show the AI section of the workflow state")
 
     consensus = commands.add_parser(
         "materialize-consensus",
@@ -102,7 +104,26 @@ def build_parser() -> argparse.ArgumentParser:
     active.add_argument("--candidates", type=Path, required=True)
     active.add_argument("--embeddings", type=Path, default=None)
     active.add_argument("--output", type=Path, default=None)
+
+    crossover = commands.add_parser(
+        "create-crossover-plan",
+        help="Randomize blank versus AI-assisted annotation across both graders",
+    )
+    crossover.add_argument("--batch-manifest", type=Path, required=True)
+    crossover.add_argument("--output", type=Path, default=None)
+
+    summarize = commands.add_parser(
+        "summarize-crossover",
+        help="Summarize annotation time, corrections, and senior referrals",
+    )
+    summarize.add_argument("--completed-plan", type=Path, required=True)
+    summarize.add_argument("--output-dir", type=Path, required=True)
     return parser
+
+
+def _load_state(config):
+    workflow_config = load_workflow_config(config.workflow_config_path)
+    return workflow_config, WorkflowState.load_or_create(workflow_config)
 
 
 def main() -> None:
@@ -110,9 +131,11 @@ def main() -> None:
     config = load_ai_workflow_config(args.config)
     if args.command == "check":
         result = config.validate(require_runtime_files=not args.configuration_only)
+    elif args.command == "status":
+        _, state = _load_state(config)
+        result = state.data.get("ai", {"status": "LOCKED_UNTIL_CONSENSUS"})
     elif args.command == "materialize-consensus":
-        workflow_config = load_workflow_config(config.workflow_config_path)
-        state = WorkflowState.load_or_create(workflow_config)
+        workflow_config, state = _load_state(config)
         result = materialize_consensus_dataset(
             workflow_config,
             config,
@@ -151,36 +174,48 @@ def main() -> None:
         )
     elif args.command == "comparison-matrix":
         result = build_comparison_matrix(args.summary, args.output)
-    elif args.command in {"approve-model", "create-assisted-task"}:
-        workflow_config = load_workflow_config(config.workflow_config_path)
-        state = WorkflowState.load_or_create(workflow_config)
-        if args.command == "approve-model":
-            result = approve_model_for_assistance(
-                state,
-                args.model,
-                args.benchmark_summary,
-                args.approved_by,
-                args.notes,
-            )
-        else:
-            result = create_ai_assisted_task(
-                workflow_config,
-                config,
-                state,
-                grader_id=args.grader,
-                model_id=args.model,
-                batch_manifest_path=args.batch_manifest,
-                prediction_manifest_path=args.prediction_manifest,
-                prediction_masks_dir=args.prediction_masks,
-                batch_id=args.batch_id,
-                allow_existing=args.allow_existing,
-            )
+    elif args.command == "approve-model":
+        _, state = _load_state(config)
+        result = approve_model_for_assistance(
+            state,
+            args.model,
+            args.benchmark_summary,
+            args.approved_by,
+            args.notes,
+        )
+    elif args.command == "create-assisted-task":
+        workflow_config, state = _load_state(config)
+        result = create_ai_assisted_task(
+            workflow_config,
+            config,
+            state,
+            grader_id=args.grader,
+            model_id=args.model,
+            batch_manifest_path=args.batch_manifest,
+            prediction_manifest_path=args.prediction_manifest,
+            prediction_masks_dir=args.prediction_masks,
+            batch_id=args.batch_id,
+            allow_existing=args.allow_existing,
+        )
     elif args.command == "select-active-batch":
         result = select_active_learning_batch(
             config,
             args.candidates,
             output_path=args.output,
             embeddings_path=args.embeddings,
+        )
+    elif args.command == "create-crossover-plan":
+        workflow_config = load_workflow_config(config.workflow_config_path)
+        result = create_crossover_plan(
+            config,
+            args.batch_manifest,
+            tuple(grader.grader_id for grader in workflow_config.graders),
+            args.output,
+        )
+    elif args.command == "summarize-crossover":
+        result = summarize_crossover_results(
+            args.completed_plan,
+            args.output_dir,
         )
     else:  # pragma: no cover
         raise AssertionError(args.command)
