@@ -1,0 +1,93 @@
+{
+  "workflow_config_path": "workflow_pilot_v1.json",
+  "consensus_manifest_path": "../collaboration_runs/slit_pilot_v1/workflow/adjudication/final_consensus_manifest.csv",
+  "image_dir": "../collaboration_runs/slit_pilot_v1/drive_upload/images",
+  "output_dir": "../collaboration_runs/slit_pilot_v1/ai",
+  "schema_path": "annotation_schema_v1.json",
+  "random_seed": 20260727,
+  "split": {
+    "group_column": "blinded_patient_id",
+    "train_fraction": 0.70,
+    "validation_fraction": 0.15,
+    "test_fraction": 0.15
+  },
+  "models": [
+    {
+      "model_id": "unet_resnet34",
+      "family": "segmentation_models_pytorch",
+      "role": "primary_conventional_baseline",
+      "enabled": true,
+      "parameters": {
+        "architecture": "Unet",
+        "encoder_name": "resnet34",
+        "encoder_weights": "imagenet",
+        "input_size": 512
+      }
+    },
+    {
+      "model_id": "segformer_b0",
+      "family": "huggingface_segformer",
+      "role": "primary_transformer_baseline",
+      "enabled": true,
+      "parameters": {
+        "checkpoint": "nvidia/mit-b0",
+        "input_size": 512
+      }
+    },
+    {
+      "model_id": "nnunet_2d",
+      "family": "nnunet_external",
+      "role": "self_configuring_reference",
+      "enabled": false,
+      "parameters": {
+        "configuration": "2d"
+      }
+    },
+    {
+      "model_id": "sam2_interactive",
+      "family": "interactive_helper",
+      "role": "optional_boundary_refinement_only",
+      "enabled": false,
+      "parameters": {}
+    }
+  ],
+  "training": {
+    "epochs": 100,
+    "batch_size": 4,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.00001,
+    "early_stopping_patience": 15,
+    "loss": "cross_entropy_plus_soft_dice",
+    "mixed_precision": true
+  },
+  "uncertainty": {
+    "save_probability_maps": true,
+    "save_entropy_maps": true,
+    "test_time_augmentation": false,
+    "ensemble_model_ids": ["unet_resnet34", "segformer_b0"]
+  },
+  "evaluation": {
+    "reference": "senior_consensus",
+    "compare_human_graders": true,
+    "bootstrap_iterations": 1000,
+    "quality_stratification": true,
+    "artifact_stratification": true
+  },
+  "ai_assisted_cvat": {
+    "enabled_after_independent_test": true,
+    "project_name_template": "OpenSLIT-Iris AI-assisted - {grader_id} - {model_id}",
+    "task_name_template": "OpenSLIT-Iris AI-assisted - {grader_id} - {model_id} - batch {batch_id}",
+    "require_model_approval": true,
+    "record_correction_category": true,
+    "record_annotation_time": true
+  },
+  "active_learning": {
+    "batch_size": 40,
+    "uncertainty_fraction": 0.40,
+    "model_disagreement_fraction": 0.25,
+    "diversity_fraction": 0.20,
+    "random_fraction": 0.15,
+    "minimum_random_images": 5,
+    "exclude_test_set": true
+  }
+}
