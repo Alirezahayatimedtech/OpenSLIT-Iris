@@ -60,7 +60,9 @@ def build_cvat_segmentation_archive(
             observed = set(mask.getdata())
             unknown = observed - set(schema.class_ids)
             if unknown:
-                raise ValueError(f"AI mask {source} contains unknown class IDs: {unknown}")
+                raise ValueError(
+                    f"AI mask {source} contains unknown class IDs: {unknown}"
+                )
             destination = segmentation_dir / f"{Path(str(row.image_file)).stem}.png"
             mask.save(destination)
         stems.append(Path(str(row.image_file)).stem)
@@ -156,13 +158,17 @@ def create_ai_assisted_task(
         missing_predictions = sorted(
             set(batch["image_id"]) - set(filtered_prediction["image_id"])
         )
-        raise ValueError(f"AI predictions are missing batch images: {missing_predictions}")
+        raise ValueError(
+            f"AI predictions are missing batch images: {missing_predictions}"
+        )
     expected_files = batch.set_index("image_id")["image_file"].to_dict()
     mismatched = [
         image_id
         for image_id, image_file in filtered_prediction.set_index("image_id")[
             "image_file"
-        ].to_dict().items()
+        ]
+        .to_dict()
+        .items()
         if expected_files.get(image_id) != image_file
     ]
     if mismatched:
@@ -233,9 +239,10 @@ def create_ai_assisted_task(
         raise RuntimeError(
             "Install CVAT dependencies with: python -m pip install -e '.[cvat]'"
         ) from exc
-    with archive_path.open("rb") as handle, authenticated_client(
-        workflow_config.cvat.host
-    ) as client:
+    with (
+        archive_path.open("rb") as handle,
+        authenticated_client(workflow_config.cvat.host) as client,
+    ):
         response = client.api_client.tasks_api.create_annotations(
             task_id,
             format=workflow_config.cvat.export_format,
@@ -283,6 +290,10 @@ def approve_model_for_assistance(
         raise ValueError("Model approval requires a senior-consensus benchmark")
     if int(benchmark.get("images", 0)) < 1:
         raise ValueError("Model approval requires a non-empty independent benchmark")
+    if benchmark.get("split") != "test":
+        raise ValueError(
+            "Model approval requires a benchmark restricted to the untouched test split"
+        )
     if benchmark.get("source") not in {model_id, f"ai_{model_id}"}:
         raise ValueError(
             "Benchmark source does not match the model being approved: "

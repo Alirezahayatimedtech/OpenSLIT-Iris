@@ -31,12 +31,15 @@ def _source_manifest(path: Path, source_name: str) -> pd.DataFrame:
     required = {"image_id", "mask_file"}
     missing = required - set(data.columns)
     if missing:
-        raise ValueError(f"{source_name} manifest is missing columns: {sorted(missing)}")
+        raise ValueError(
+            f"{source_name} manifest is missing columns: {sorted(missing)}"
+        )
     if data["image_id"].duplicated().any():
         raise ValueError(f"{source_name} manifest has duplicate image IDs")
-    return data[["image_id", "mask_file"]].rename(
-        columns={"mask_file": "source_mask_file"}
-    )
+    columns = ["image_id", "mask_file"]
+    if "split" in data.columns:
+        columns.append("split")
+    return data[columns].rename(columns={"mask_file": "source_mask_file"})
 
 
 def compare_source_to_consensus(
@@ -59,11 +62,34 @@ def compare_source_to_consensus(
     missing = required - set(consensus.columns)
     if missing:
         raise ValueError(f"Consensus manifest is missing columns: {sorted(missing)}")
+    if consensus["image_id"].duplicated().any():
+        raise ValueError("Consensus manifest has duplicate image IDs")
     source = _source_manifest(source_manifest_path, source_name)
-    joined = consensus.merge(source, on="image_id", how="inner", validate="one_to_one")
-    if len(joined) != len(consensus):
-        missing_ids = sorted(set(consensus["image_id"]) - set(joined["image_id"]))
-        raise ValueError(f"{source_name} is missing consensus images: {missing_ids[:20]}")
+    if source.empty:
+        raise ValueError(f"{source_name} manifest contains no images")
+    unknown_ids = sorted(set(source["image_id"]) - set(consensus["image_id"]))
+    if unknown_ids:
+        raise ValueError(
+            f"{source_name} contains images absent from consensus: {unknown_ids[:20]}"
+        )
+    joined = source.merge(
+        consensus,
+        on="image_id",
+        how="left",
+        validate="one_to_one",
+    )
+
+    split_value: str | None = None
+    split_counts: dict[str, int] = {}
+    if "split" in source.columns:
+        split_labels = source["split"].astype(str).str.strip()
+        if split_labels.eq("").any():
+            raise ValueError(f"{source_name} manifest contains blank split labels")
+        split_counts = {
+            str(key): int(value)
+            for key, value in split_labels.value_counts().sort_index().items()
+        }
+        split_value = next(iter(split_counts)) if len(split_counts) == 1 else "mixed"
 
     safe_source = "".join(
         character if character.isalnum() or character in {"-", "_"} else "_"
@@ -79,6 +105,20 @@ def compare_source_to_consensus(
         image_id = str(row.image_id)
         reference = _load_mask(consensus_masks_dir / str(row.mask_file))
         prediction = _load_mask(source_masks_dir / str(row.source_mask_file))
+        if reference.shape != prediction.shape:
+            raise ValueError(
+                f"Mask dimensions differ for {image_id}: "
+                f"reference={reference.shape}, source={prediction.shape}"
+            )
+        unknown_reference = sorted(set(np.unique(reference).tolist()) - set(class_ids))
+        unknown_prediction = sorted(
+            set(np.unique(prediction).tolist()) - set(class_ids)
+        )
+        if unknown_reference or unknown_prediction:
+            raise ValueError(
+                f"Unknown mask class IDs for {image_id}: "
+                f"reference={unknown_reference}, source={unknown_prediction}"
+            )
         per_class = multiclass_metrics(reference, prediction, class_ids)
         foreground_dice = [
             values["dice"] for class_id, values in per_class.items() if class_id != 0
@@ -114,6 +154,8 @@ def compare_source_to_consensus(
     summary = {
         "source": source_name,
         "reference": "senior_consensus",
+        "split": split_value,
+        "split_counts": split_counts,
         "images": len(image_table),
         "macro_foreground_dice_mean": float(
             image_table["macro_foreground_dice"].mean()
@@ -149,6 +191,7 @@ def build_comparison_matrix(
             {
                 "source": raw["source"],
                 "reference": raw["reference"],
+                "split": raw.get("split"),
                 "images": raw["images"],
                 "macro_foreground_dice_mean": raw["macro_foreground_dice_mean"],
                 "macro_foreground_dice_median": raw["macro_foreground_dice_median"],

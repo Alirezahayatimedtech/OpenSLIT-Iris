@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +13,9 @@ from PIL import Image
 from openslit.annotation.validate_masks import validate_dataset
 from openslit.workflow.config import WorkflowConfig
 from openslit.workflow.state import WorkflowState, utc_now
+from openslit.workflow.submissions import resolve_segmentation_masks
 
 from .config import AIWorkflowConfig
-
 
 FINAL_OUTCOMES = {"ACCEPT_A", "ACCEPT_B", "CREATE_CONSENSUS", "UNGRADABLE"}
 
@@ -27,24 +26,6 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def _latest_submission(state: WorkflowState, grader_id: str) -> dict[str, Any]:
-    submissions = state.grader_state(grader_id).get("segmentation_submissions", [])
-    if not submissions:
-        raise RuntimeError(f"No frozen segmentation submission exists for {grader_id}")
-    return submissions[-1]
-
-
-def _mask_map(submission: dict[str, Any]) -> tuple[Path, dict[str, str]]:
-    manifest = pd.read_csv(submission["manifest_path"], dtype=str, keep_default_na=False)
-    required = {"image_id", "mask_file"}
-    missing = required - set(manifest.columns)
-    if missing:
-        raise ValueError(f"Frozen submission manifest is missing columns: {sorted(missing)}")
-    if manifest["image_id"].duplicated().any():
-        raise ValueError("Frozen submission manifest contains duplicate image IDs")
-    return Path(submission["masks_dir"]), manifest.set_index("image_id")["mask_file"].to_dict()
 
 
 def _patient_lookup(workflow_config: WorkflowConfig) -> dict[str, str]:
@@ -79,7 +60,30 @@ def materialize_consensus_dataset(
     excluded from the training manifest.
     """
 
-    queue = pd.read_csv(adjudication_queue_path, dtype=str, keep_default_na=False)
+    adjudication = state.data.get("adjudication", {})
+    if adjudication.get("status") != "FINALIZED":
+        raise RuntimeError(
+            "Senior adjudication must be finalized before consensus materialization"
+        )
+    frozen_queue_value = adjudication.get("final_adjudication_path")
+    if not frozen_queue_value:
+        legacy_value = adjudication.get("final_consensus_path")
+        if legacy_value and str(legacy_value).endswith(".csv"):
+            frozen_queue_value = legacy_value
+    if not frozen_queue_value:
+        raise RuntimeError("Workflow state does not record a frozen adjudication file")
+    frozen_queue = Path(str(frozen_queue_value)).expanduser().resolve()
+    supplied_queue = adjudication_queue_path.expanduser().resolve()
+    if supplied_queue != frozen_queue:
+        raise ValueError(
+            "Consensus must be materialized from the frozen adjudication file: "
+            f"{frozen_queue}"
+        )
+    expected_queue_hash = str(adjudication.get("final_adjudication_sha256", ""))
+    if expected_queue_hash and _sha256(frozen_queue) != expected_queue_hash:
+        raise ValueError("Frozen adjudication SHA-256 does not match workflow state")
+
+    queue = pd.read_csv(frozen_queue, dtype=str, keep_default_na=False)
     required = {
         "image_id",
         "image_file",
@@ -104,8 +108,8 @@ def materialize_consensus_dataset(
         raise ValueError(f"Adjudication is not resolved for: {unresolved[:20]}")
 
     grader_a, grader_b = workflow_config.graders
-    dir_a, map_a = _mask_map(_latest_submission(state, grader_a.grader_id))
-    dir_b, map_b = _mask_map(_latest_submission(state, grader_b.grader_id))
+    masks_a = resolve_segmentation_masks(state, grader_a.grader_id)
+    masks_b = resolve_segmentation_masks(state, grader_b.grader_id)
     patient_by_image = _patient_lookup(workflow_config)
     schema = workflow_config.load_schema()
 
@@ -122,22 +126,24 @@ def materialize_consensus_dataset(
         source_path: Path | None = None
         source_label = outcome
         if outcome == "ACCEPT_A":
-            if image_id not in map_a:
+            if image_id not in masks_a:
                 raise ValueError(f"Grader A has no frozen mask for {image_id}")
-            source_path = dir_a / map_a[image_id]
+            source_path = masks_a[image_id].path
         elif outcome == "ACCEPT_B":
-            if image_id not in map_b:
+            if image_id not in masks_b:
                 raise ValueError(f"Grader B has no frozen mask for {image_id}")
-            source_path = dir_b / map_b[image_id]
+            source_path = masks_b[image_id].path
         elif outcome == "CREATE_CONSENSUS":
             raw_path = str(row.consensus_mask_file).strip()
             if not raw_path:
-                raise ValueError(f"CREATE_CONSENSUS requires consensus_mask_file for {image_id}")
+                raise ValueError(
+                    f"CREATE_CONSENSUS requires consensus_mask_file for {image_id}"
+                )
             candidate = Path(raw_path).expanduser()
             source_path = (
                 candidate
                 if candidate.is_absolute()
-                else (adjudication_queue_path.parent / candidate).resolve()
+                else (frozen_queue.parent / candidate).resolve()
             )
         elif outcome == "UNGRADABLE":
             audit_rows.append(
@@ -159,7 +165,9 @@ def materialize_consensus_dataset(
             mask = np.asarray(image.convert("L"), dtype=np.uint8)
         unknown = sorted(set(np.unique(mask).tolist()) - set(schema.class_ids))
         if unknown:
-            raise ValueError(f"Consensus source for {image_id} contains unknown IDs: {unknown}")
+            raise ValueError(
+                f"Consensus source for {image_id} contains unknown IDs: {unknown}"
+            )
         destination_name = f"{image_id}_mask.png"
         destination = masks_dir / destination_name
         Image.fromarray(mask, mode="L").save(destination)
@@ -218,7 +226,12 @@ def materialize_consensus_dataset(
     state.data["adjudication"]["final_consensus_audit_path"] = str(audit_path)
     ai_state = state.data.setdefault(
         "ai",
-        {"status": "LOCKED", "models": {}, "assisted_tasks": [], "active_learning_batches": []},
+        {
+            "status": "LOCKED",
+            "models": {},
+            "assisted_tasks": [],
+            "active_learning_batches": [],
+        },
     )
     ai_state["status"] = "CONSENSUS_READY"
     ai_state["consensus_manifest_path"] = str(manifest_path)

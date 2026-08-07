@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import csv
+import hashlib
 import math
 from pathlib import Path
 from typing import Any
@@ -14,8 +14,9 @@ from PIL import Image, ImageDraw
 from openslit.collaboration.validation import merge_submissions
 
 from .config import WorkflowConfig
+from .revisions import sync_revision_request_log, unresolved_revision_requests
 from .state import WorkflowState, utc_now
-
+from .submissions import resolve_segmentation_masks
 
 ADJUDICATION_OUTCOMES = [
     "",
@@ -28,6 +29,13 @@ ADJUDICATION_OUTCOMES = [
     "UNGRADABLE",
     "PROTOCOL_CLARIFICATION_REQUIRED",
 ]
+
+FINAL_ADJUDICATION_OUTCOMES = {
+    "ACCEPT_A",
+    "ACCEPT_B",
+    "CREATE_CONSENSUS",
+    "UNGRADABLE",
+}
 
 
 def _safe_divide(numerator: float, denominator: float) -> float:
@@ -103,7 +111,9 @@ def _overlay_disagreement(
     )
 
 
-def _latest_submission(state: WorkflowState, grader_id: str, stage: str) -> dict[str, Any]:
+def _latest_submission(
+    state: WorkflowState, grader_id: str, stage: str
+) -> dict[str, Any]:
     key = f"{stage}_submissions"
     submissions = state.grader_state(grader_id).get(key, [])
     if not submissions:
@@ -124,15 +134,18 @@ def build_mask_disagreement_package(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     grader_a, grader_b = config.graders
-    submission_a = _latest_submission(state, grader_a.grader_id, "segmentation")
-    submission_b = _latest_submission(state, grader_b.grader_id, "segmentation")
-    masks_a_dir = Path(submission_a["masks_dir"])
-    masks_b_dir = Path(submission_b["masks_dir"])
-    manifest_a = pd.read_csv(submission_a["manifest_path"], dtype=str, keep_default_na=False)
-    manifest_b = pd.read_csv(submission_b["manifest_path"], dtype=str, keep_default_na=False)
-    map_a = manifest_a.set_index("image_id")["mask_file"].to_dict()
-    map_b = manifest_b.set_index("image_id")["mask_file"].to_dict()
     selected = config.selected_mask_manifest()
+    selected_ids = selected["blinded_image_id"].astype(str).tolist()
+    masks_a = resolve_segmentation_masks(
+        state,
+        grader_a.grader_id,
+        selected_ids,
+    )
+    masks_b = resolve_segmentation_masks(
+        state,
+        grader_b.grader_id,
+        selected_ids,
+    )
     schema = config.load_schema()
 
     metric_rows: list[dict[str, Any]] = []
@@ -140,11 +153,9 @@ def build_mask_disagreement_package(
     for row in selected.itertuples(index=False):
         image_id = str(getattr(row, "blinded_image_id"))
         image_file = str(getattr(row, "image_file"))
-        if image_id not in map_a or image_id not in map_b:
-            raise ValueError(f"Both graders must provide a mask for {image_id}")
-        with Image.open(masks_a_dir / map_a[image_id]) as image_a:
+        with Image.open(masks_a[image_id].path) as image_a:
             mask_a = np.asarray(image_a)
-        with Image.open(masks_b_dir / map_b[image_id]) as image_b:
+        with Image.open(masks_b[image_id].path) as image_b:
             mask_b = np.asarray(image_b)
         if mask_a.shape != mask_b.shape:
             raise ValueError(f"Mask dimensions differ for {image_id}")
@@ -304,15 +315,8 @@ def record_revision_request(
         if grader_state["segmentation_status"] == "FROZEN":
             grader_state["segmentation_status"] = "REVISION_REQUESTED"
 
-    output_path = config.state_path.parent / "adjudication" / "revision_requests.csv"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    existing: list[dict[str, str]] = []
-    if output_path.is_file():
-        with output_path.open(newline="", encoding="utf-8") as handle:
-            existing = list(csv.DictReader(handle))
-    pd.DataFrame([*existing, request]).to_csv(output_path, index=False)
     state.data["adjudication"]["status"] = "REVISION_REQUESTED"
-    state.data["adjudication"]["revision_requests_path"] = str(output_path)
+    sync_revision_request_log(config, state)
     state.record_event(
         "revision_requested",
         config.adjudicator.adjudicator_id,
@@ -334,32 +338,106 @@ def finalize_adjudication(
     missing = required - set(queue.columns)
     if missing:
         raise ValueError(f"Adjudication queue is missing columns: {sorted(missing)}")
-    invalid = sorted(set(queue["senior_outcome"]) - set(ADJUDICATION_OUTCOMES))
+    if queue["image_id"].duplicated().any():
+        duplicates = sorted(
+            queue.loc[queue["image_id"].duplicated(), "image_id"].unique()
+        )
+        raise ValueError(
+            f"Adjudication queue contains duplicate image IDs: {duplicates}"
+        )
+    expected_ids = set(config.selected_mask_manifest()["blinded_image_id"].astype(str))
+    observed_ids = set(queue["image_id"].astype(str))
+    if observed_ids != expected_ids:
+        raise ValueError(
+            "Adjudication queue image IDs differ from the locked mask subset: "
+            f"missing={sorted(expected_ids - observed_ids)}, "
+            f"unexpected={sorted(observed_ids - expected_ids)}"
+        )
+
+    invalid = sorted(set(queue["senior_outcome"]) - FINAL_ADJUDICATION_OUTCOMES)
     if invalid:
-        raise ValueError(f"Unknown senior outcomes: {invalid}")
-    incomplete = queue[queue["senior_outcome"].eq("")]
-    if not incomplete.empty:
         raise ValueError(
-            f"Senior outcome is missing for {len(incomplete)} images"
+            f"Adjudication cannot be finalized with non-final outcomes: {invalid}"
         )
-    open_revisions = queue[
-        queue["senior_outcome"].str.startswith("REVISION_REQUESTED")
-        & ~queue["adjudication_status"].eq("resolved")
+    unresolved_rows = queue[
+        ~queue["adjudication_status"].isin({"resolved", "finalized"})
     ]
-    if not open_revisions.empty:
-        raise ValueError(
-            f"{len(open_revisions)} revision-requested images are not resolved"
+    if not unresolved_rows.empty:
+        raise ValueError(f"{len(unresolved_rows)} adjudication rows are not resolved")
+    state_revisions = unresolved_revision_requests(state)
+    if state_revisions:
+        request_ids = sorted(
+            {str(item.get("request_id", "")) for item in state_revisions}
         )
+        raise ValueError(
+            f"Workflow state contains unresolved revision requests: {request_ids[:20]}"
+        )
+
+    schema = config.load_schema()
+    selected = config.selected_mask_manifest().set_index("blinded_image_id")
+    consensus_rows = queue[queue["senior_outcome"].eq("CREATE_CONSENSUS")]
+    for row in consensus_rows.itertuples(index=False):
+        raw_path = str(getattr(row, "consensus_mask_file", "")).strip()
+        if not raw_path:
+            raise ValueError(
+                f"CREATE_CONSENSUS requires consensus_mask_file for {row.image_id}"
+            )
+        candidate = Path(raw_path).expanduser()
+        mask_path = (
+            candidate
+            if candidate.is_absolute()
+            else (adjudication_queue.parent / candidate).resolve()
+        )
+        if not mask_path.is_file():
+            raise FileNotFoundError(mask_path)
+        with Image.open(mask_path) as mask_image:
+            mask = np.asarray(mask_image)
+        if mask.ndim != 2:
+            raise ValueError(
+                f"Consensus mask for {row.image_id} must be a 2-D indexed image"
+            )
+        unknown = sorted(set(np.unique(mask).tolist()) - set(schema.class_ids))
+        if unknown:
+            raise ValueError(
+                f"Consensus mask for {row.image_id} contains unknown IDs: {unknown}"
+            )
+        source_image_path = config.image_dir / str(
+            selected.loc[str(row.image_id), "image_file"]
+        )
+        with Image.open(source_image_path) as source_image:
+            expected_size = source_image.size
+        if mask.shape != (expected_size[1], expected_size[0]):
+            raise ValueError(
+                f"Consensus mask size differs from source image for {row.image_id}"
+            )
 
     frozen = config.state_path.parent / "adjudication" / "final_adjudication.csv"
     frozen.parent.mkdir(parents=True, exist_ok=True)
-    queue.to_csv(frozen, index=False)
+    content = queue.to_csv(index=False)
+    idempotent = False
+    if frozen.exists():
+        if frozen.read_text(encoding="utf-8") != content:
+            raise FileExistsError(
+                f"Frozen adjudication already exists and cannot be overwritten: {frozen}"
+            )
+        idempotent = True
+    else:
+        with frozen.open("x", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
     state.data["adjudication"]["status"] = "FINALIZED"
-    state.data["adjudication"]["final_consensus_path"] = str(frozen)
-    state.record_event(
-        "adjudication_finalized",
-        config.adjudicator.adjudicator_id,
-        {"images": len(queue), "path": str(frozen)},
-    )
+    state.data["adjudication"]["final_adjudication_path"] = str(frozen)
+    state.data["adjudication"]["final_adjudication_sha256"] = digest
+    if not idempotent:
+        state.record_event(
+            "adjudication_finalized",
+            config.adjudicator.adjudicator_id,
+            {"images": len(queue), "path": str(frozen), "sha256": digest},
+        )
     state.save()
-    return {"images": len(queue), "final_adjudication_path": str(frozen)}
+    return {
+        "images": len(queue),
+        "final_adjudication_path": str(frozen),
+        "sha256": digest,
+        "idempotent": idempotent,
+    }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -16,8 +17,10 @@ from openslit.annotation.validate_masks import validate_dataset
 from openslit.cvat.api import authenticated_client, setup_cvat_workspace
 from openslit.cvat.config import CvatSetupConfig, CvatTaskPlan
 
-from .config import GraderConfig, WorkflowConfig
+from .config import WorkflowConfig
+from .revisions import mark_revision_requests_resolved, sync_revision_request_log
 from .state import WorkflowState, utc_now
+from .submissions import resolve_segmentation_masks
 
 
 def _sha256(path: Path) -> str:
@@ -169,9 +172,7 @@ def normalize_segmentation_export(
         raise ValueError(
             "Expected exactly one SegmentationClass directory in CVAT export"
         )
-    source_masks = {
-        path.stem: path for path in segmentation_dirs[0].glob("*.png")
-    }
+    source_masks = {path.stem: path for path in segmentation_dirs[0].glob("*.png")}
 
     manifest_rows: list[dict[str, str]] = []
     for row in selected_manifest.itertuples(index=False):
@@ -212,27 +213,35 @@ def export_and_freeze_segmentation(
 ) -> dict[str, Any]:
     """Export one CVAT task, normalize its masks, validate, hash, and freeze it."""
 
-    grader: GraderConfig = config.grader(grader_id)
     grader_state = state.grader_state(grader_id)
     if grader_state["segmentation_status"] not in {
         "ASSIGNED",
         "IN_PROGRESS",
         "SUBMITTED",
-        "REVISION_REQUESTED",
     }:
         raise RuntimeError(
             f"Cannot freeze segmentation for {grader_id} from "
             f"{grader_state['segmentation_status']}"
         )
+    version = int(grader_state["segmentation_version"]) + 1
     task_id = grader_state["cvat"].get("task_id")
-    if grader_state["cvat"].get("revision_tasks"):
-        latest_revision = grader_state["cvat"]["revision_tasks"][-1]
-        if int(latest_revision["version"]) == int(grader_state["segmentation_version"]) + 1:
-            task_id = latest_revision["task_id"]
+    revision_image_ids: set[str] | None = None
+    if version > 1:
+        revision_tasks = grader_state["cvat"].get("revision_tasks", [])
+        if not revision_tasks or int(revision_tasks[-1]["version"]) != version:
+            raise RuntimeError(
+                f"Create the version {version} revision task before freezing {grader_id}"
+            )
+        latest_revision = revision_tasks[-1]
+        task_id = latest_revision["task_id"]
+        revision_image_ids = {
+            str(image_id) for image_id in latest_revision.get("image_ids", [])
+        }
+        if not revision_image_ids:
+            raise RuntimeError(f"Revision task v{version} contains no images")
     if not task_id:
         raise RuntimeError(f"No CVAT task is recorded for {grader_id}")
 
-    version = int(grader_state["segmentation_version"]) + 1
     output_dir = (
         config.state_path.parent
         / "submissions"
@@ -252,14 +261,12 @@ def export_and_freeze_segmentation(
 
     schema = config.load_schema()
     selected = config.selected_mask_manifest()
-    if version > 1:
-        revision_ids = {
-            str(item["image_id"])
-            for item in grader_state.get("revision_requests", [])
-            if int(item.get("revision_version", version)) == version
-        }
-        if revision_ids:
-            selected = selected[selected["blinded_image_id"].isin(revision_ids)].copy()
+    if revision_image_ids is not None:
+        selected = selected[
+            selected["blinded_image_id"].isin(revision_image_ids)
+        ].copy()
+        if set(selected["blinded_image_id"].astype(str)) != revision_image_ids:
+            raise ValueError("Revision task contains images outside the locked subset")
     masks_dir, manifest_path = normalize_segmentation_export(
         archive_path=archive_path,
         output_dir=output_dir,
@@ -297,6 +304,13 @@ def export_and_freeze_segmentation(
             "validation_summary": summary,
         }
     )
+    resolved_revisions = mark_revision_requests_resolved(
+        config,
+        state,
+        grader_id,
+        version,
+        selected["blinded_image_id"].astype(str).tolist(),
+    )
     if grader_state["segmentation_status"] != "SUBMITTED":
         state.set_segmentation_status(
             grader_id,
@@ -322,6 +336,7 @@ def export_and_freeze_segmentation(
         "masks_dir": str(masks_dir),
         "manifest_path": str(manifest_path),
         "validation": summary,
+        "resolved_revision_requests": resolved_revisions,
         "both_segmentations_frozen": all(
             item["segmentation_status"] == "FROZEN"
             for item in state.data["graders"].values()
@@ -339,15 +354,13 @@ def _build_revision_import_archive(
     """Build a CVAT Segmentation Mask archive from latest frozen masks."""
 
     schema = config.load_schema()
-    submission = state.grader_state(grader_id)["segmentation_submissions"][-1]
-    masks_dir = Path(submission["masks_dir"])
-    manifest = pd.read_csv(submission["manifest_path"], dtype=str, keep_default_na=False)
-    manifest = manifest[manifest["image_id"].isin(image_ids)].copy()
-    if set(manifest["image_id"]) != set(image_ids):
-        missing = sorted(set(image_ids) - set(manifest["image_id"]))
-        raise ValueError(f"Frozen masks are missing revision images: {missing}")
+    resolved_masks = resolve_segmentation_masks(state, grader_id, image_ids)
+    selected = config.selected_mask_manifest()
+    image_files = selected.set_index("blinded_image_id")["image_file"].to_dict()
 
     staging = output_path.parent / "revision_import"
+    if staging.exists():
+        shutil.rmtree(staging)
     segmentation_dir = staging / "SegmentationClass"
     image_set_dir = staging / "ImageSets" / "Segmentation"
     segmentation_dir.mkdir(parents=True, exist_ok=True)
@@ -366,14 +379,14 @@ def _build_revision_import_archive(
         [item.color_rgb for item in sorted(schema.classes, key=lambda item: item.id)],
         dtype=np.uint8,
     )
-    for row in manifest.itertuples(index=False):
-        image_file = str(row.image_file)
+    for image_id in image_ids:
+        image_file = str(image_files[image_id])
         stem = Path(image_file).stem
         stems.append(stem)
-        with Image.open(masks_dir / str(row.mask_file)) as image:
+        with Image.open(resolved_masks[image_id].path) as image:
             indexed = np.asarray(image)
         if indexed.max(initial=0) >= len(color_lookup):
-            raise ValueError(f"Mask contains an invalid class ID for {row.image_id}")
+            raise ValueError(f"Mask contains an invalid class ID for {image_id}")
         rgb = color_lookup[indexed]
         Image.fromarray(rgb, mode="RGB").save(segmentation_dir / f"{stem}.png")
     (image_set_dir / "revision.txt").write_text(
@@ -413,13 +426,22 @@ def create_revision_task(
     revision_manifest = selected[selected["blinded_image_id"].isin(image_ids)].copy()
     if len(revision_manifest) != len(image_ids):
         raise ValueError("Revision requests include images outside the locked subset")
+    version = int(grader_state["segmentation_version"]) + 1
     revision_dir = config.state_path.parent / "revisions" / grader_id
     revision_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = revision_dir / "revision_manifest.csv"
+    manifest_path = revision_dir / f"revision_v{version}_manifest.csv"
     revision_manifest["selected_for_revision"] = "true"
-    revision_manifest.to_csv(manifest_path, index=False)
+    manifest_content = revision_manifest.to_csv(index=False)
+    if manifest_path.exists():
+        if manifest_path.read_text(encoding="utf-8") != manifest_content:
+            raise FileExistsError(
+                "Revision manifest already exists with different content: "
+                f"{manifest_path}"
+            )
+    else:
+        with manifest_path.open("x", encoding="utf-8", newline="") as handle:
+            handle.write(manifest_content)
 
-    version = int(grader_state["segmentation_version"]) + 1
     setup_config = CvatSetupConfig(
         config_path=config.config_path,
         project_name=config.cvat.project_name(grader),
@@ -471,6 +493,7 @@ def create_revision_task(
         request["status"] = "assigned"
         request["revision_task_id"] = task_id
         request["revision_version"] = version
+    sync_revision_request_log(config, state)
     grader_state["segmentation_status"] = "ASSIGNED"
     state.record_event(
         "cvat_revision_task_created",
