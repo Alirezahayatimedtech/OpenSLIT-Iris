@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -49,8 +48,13 @@ def _load_manifest(config: FeatureExtractionConfig) -> pd.DataFrame:
     required = {"image_id", "image_file", "mask_file", "review_status", "gradable"}
     missing = required - set(data.columns)
     if missing:
-        raise ValueError(f"Feature source manifest is missing columns: {sorted(missing)}")
-    if config.source_requirements.require_mask_sha256 and "mask_sha256" not in data.columns:
+        raise ValueError(
+            f"Feature source manifest is missing columns: {sorted(missing)}"
+        )
+    if (
+        config.source_requirements.require_mask_sha256
+        and "mask_sha256" not in data.columns
+    ):
         raise ValueError("Feature source manifest must include mask_sha256")
     if data["image_id"].duplicated().any():
         duplicates = sorted(
@@ -131,7 +135,6 @@ def _top_flags(quality_table: pd.DataFrame) -> list[dict[str, Any]]:
 def extract_feature_table(
     config: FeatureExtractionConfig,
     run_id: str | None = None,
-    overwrite: bool = False,
 ) -> dict[str, Any]:
     """Extract geometry, color, texture, quality, and normalized-iris features."""
 
@@ -144,9 +147,9 @@ def extract_feature_table(
     )
     run_dir = config.output_dir / run_id
     if run_dir.exists():
-        if not overwrite:
-            raise FileExistsError(f"Feature run already exists: {run_dir}")
-        shutil.rmtree(run_dir)
+        raise FileExistsError(
+            f"Feature run already exists and cannot be overwritten: {run_dir}"
+        )
     previews_dir = run_dir / "previews"
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -197,9 +200,7 @@ def extract_feature_table(
             ):
                 eligibility = FeatureEligibility(
                     accepted=False,
-                    flags=tuple(
-                        [*eligibility.flags, "INSUFFICIENT_VALID_ANGLES"]
-                    ),
+                    flags=tuple([*eligibility.flags, "INSUFFICIENT_VALID_ANGLES"]),
                     measurements=eligibility.measurements,
                 )
 

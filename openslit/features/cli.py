@@ -36,7 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     extract = commands.add_parser("extract", help="Run feature extraction")
     extract.add_argument("--run-id", default=None)
-    extract.add_argument("--overwrite", action="store_true")
 
     repeatability = commands.add_parser(
         "repeatability",
@@ -74,7 +73,6 @@ def main() -> None:
         result = extract_feature_table(
             config,
             run_id=args.run_id,
-            overwrite=args.overwrite,
         )
     elif args.command == "repeatability":
         result = analyze_repeatability(

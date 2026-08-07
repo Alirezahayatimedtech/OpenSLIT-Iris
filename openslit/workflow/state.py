@@ -10,7 +10,6 @@ from typing import Any
 
 from .config import WorkflowConfig
 
-
 GRADING_STATES = {
     "NOT_STARTED",
     "IN_PROGRESS",
@@ -76,6 +75,8 @@ def initial_state(config: WorkflowConfig) -> dict[str, Any]:
             "mask_queue_path": None,
             "package_dir": None,
             "revision_requests_path": None,
+            "final_adjudication_path": None,
+            "final_adjudication_sha256": None,
             "final_consensus_path": None,
         },
         "events": [],
@@ -251,9 +252,7 @@ class WorkflowState:
                 if item["segmentation_status"] == "LOCKED":
                     item["segmentation_status"] = "ASSIGNED"
         adjudication = self.data["adjudication"]
-        if graders and all(
-            item["segmentation_status"] == "FROZEN" for item in graders
-        ):
+        if graders and all(item["segmentation_status"] == "FROZEN" for item in graders):
             if adjudication["status"] == "LOCKED":
                 adjudication["status"] = "READY"
 

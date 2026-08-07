@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from openslit.annotation.schema import load_annotation_schema
 from openslit.features.color import extract_color_features, gray_world_normalize
 from openslit.features.config import load_feature_config
+from openslit.features.extract import extract_feature_table
 from openslit.features.geometry import extract_geometry_features
 from openslit.features.normalization import normalize_iris
 from openslit.features.quality import assess_feature_eligibility
@@ -33,9 +36,7 @@ def write_schema(path: Path) -> Path:
                 "protocol_name": "test",
                 "protocol_version": "1.0",
                 "task_type": "single-label semantic segmentation",
-                "class_precedence_high_to_low": [
-                    name for _, name in reversed(classes)
-                ],
+                "class_precedence_high_to_low": [name for _, name in reversed(classes)],
                 "classes": [
                     {
                         "id": class_id,
@@ -207,3 +208,43 @@ def test_repeatability_outputs(tmp_path: Path) -> None:
     summary = pd.read_csv(result["summary_path"])
     assert "icc_2_1" in summary.columns
     assert len(summary) == 1
+
+
+def test_feature_run_cannot_overwrite_existing_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema_path = write_schema(tmp_path / "schema.json")
+    manifest_path = tmp_path / "manifest.csv"
+    pd.DataFrame(
+        [
+            {
+                "image_id": "I1",
+                "image_file": "I1.jpg",
+                "mask_file": "I1.png",
+                "review_status": "senior_consensus",
+                "gradable": "true",
+            }
+        ]
+    ).to_csv(manifest_path, index=False)
+    output_dir = tmp_path / "output"
+    run_dir = output_dir / "fixed_run"
+    run_dir.mkdir(parents=True)
+    sentinel = run_dir / "sentinel.txt"
+    sentinel.write_text("preserve", encoding="utf-8")
+    config = SimpleNamespace(
+        validate=lambda require_runtime_files: {},
+        schema_path=schema_path,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        feature_version="1.0",
+        source_requirements=SimpleNamespace(require_mask_sha256=False),
+    )
+    monkeypatch.setattr(
+        "openslit.features.extract._feature_state",
+        lambda selected: (SimpleNamespace(workflow_id="pilot"), object()),
+    )
+
+    with pytest.raises(FileExistsError, match="cannot be overwritten"):
+        extract_feature_table(config, run_id="fixed_run")
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
